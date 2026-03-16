@@ -1,6 +1,14 @@
 import os
 import sys
 import time
+
+# Ensure the src/ directory is on sys.path so bare imports work both when
+# running directly (python src/main.py) and when installed as a package
+# (entry point "src.main:main").  This must happen before any bare imports.
+_src_dir = os.path.dirname(os.path.abspath(__file__))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
 from audioplayer import AudioPlayer
 from pynput.keyboard import Controller
 from PyQt5.QtCore import QObject, QProcess
@@ -183,6 +191,14 @@ class WhisperWriterApp(QObject):
         sys.exit(self.app.exec_())
 
 
-if __name__ == '__main__':
+def main():
+    """Entry point for the whisper-writer console_scripts command."""
+    # Ensure working directory is the project root so relative asset paths resolve
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(project_root)
     app = WhisperWriterApp()
     app.run()
+
+
+if __name__ == '__main__':
+    main()
