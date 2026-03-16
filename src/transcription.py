@@ -16,29 +16,30 @@ def create_local_model():
     compute_type = local_model_options['compute_type']
     model_path = local_model_options.get('model_path')
 
+    # int8 requires CPU; int8_float16 and int8_bfloat16 require GPU
     if compute_type == 'int8':
         device = 'cpu'
         ConfigManager.console_print('Using int8 quantization, forcing CPU usage.')
+    elif compute_type in ('int8_float16', 'int8_bfloat16'):
+        device = 'cuda'
+        ConfigManager.console_print(f'Using {compute_type} quantization, forcing CUDA usage.')
     else:
         device = local_model_options['device']
 
+    model_id = model_path or local_model_options['model']
+
     try:
-        if model_path:
-            ConfigManager.console_print(f'Loading model from: {model_path}')
-            model = WhisperModel(model_path,
-                                 device=device,
-                                 compute_type=compute_type,
-                                 download_root=None)  # Prevent automatic download
-        else:
-            model = WhisperModel(local_model_options['model'],
-                                 device=device,
-                                 compute_type=compute_type)
+        ConfigManager.console_print(f'Loading model: {model_id} (device={device}, compute_type={compute_type})')
+        model = WhisperModel(model_id,
+                             device=device,
+                             compute_type=compute_type,
+                             download_root=None if model_path else None)
     except Exception as e:
         ConfigManager.console_print(f'Error initializing WhisperModel: {e}')
         ConfigManager.console_print('Falling back to CPU.')
-        model = WhisperModel(model_path or local_model_options['model'],
+        model = WhisperModel(model_id,
                              device='cpu',
-                             compute_type=compute_type,
+                             compute_type='int8' if compute_type in ('int8_float16', 'int8_bfloat16') else compute_type,
                              download_root=None if model_path else None)
 
     ConfigManager.console_print('Local model created.')

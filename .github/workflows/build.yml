@@ -1,0 +1,109 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-pyinstaller:
+    name: Build PyInstaller Binary
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libportaudio2 \
+            libsndfile1 \
+            libxcb-xinerama0 \
+            libxkbcommon0 \
+            libegl1
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ".[dev]"
+
+      - name: Build with PyInstaller
+        run: ./scripts/build.sh
+
+      - name: Upload PyInstaller artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-writer-linux-x86_64
+          path: dist/whisper-writer/
+          retention-days: 30
+
+  build-deb:
+    name: Build .deb Package
+    runs-on: ubuntu-22.04
+    needs: build-pyinstaller
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download PyInstaller build
+        uses: actions/download-artifact@v4
+        with:
+          name: whisper-writer-linux-x86_64
+          path: dist/whisper-writer/
+
+      - name: Fix permissions
+        run: chmod +x dist/whisper-writer/whisper-writer
+
+      - name: Build .deb package
+        run: ./scripts/build-deb.sh
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-writer-deb
+          path: dist/*.deb
+          retention-days: 30
+
+  build-flatpak:
+    name: Build Flatpak
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder \
+            --force-clean \
+            --repo=flatpak-repo \
+            flatpak-build \
+            packaging/flatpak/io.github.xak47d.whisper-writer.yml
+
+      - name: Create Flatpak bundle
+        run: |
+          flatpak build-bundle \
+            flatpak-repo \
+            dist/whisper-writer.flatpak \
+            io.github.xak47d.whisper-writer
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-writer-flatpak
+          path: dist/whisper-writer.flatpak
+          retention-days: 30

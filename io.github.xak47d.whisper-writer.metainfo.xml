@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.xak47d.whisper-writer</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>WhisperWriter</name>
+  <summary>Speech-to-text voice typing powered by OpenAI Whisper</summary>
+
+  <description>
+    <p>
+      WhisperWriter is a speech-to-text desktop application that runs in the background
+      and automatically transcribes your speech into the currently active window.
+      Activate it with a keyboard shortcut, speak, and your words are typed out.
+    </p>
+    <p>
+      Transcription can be performed locally using the faster-whisper engine with models
+      ranging from tiny to large-v3-turbo, or via the OpenAI API. Supports multiple
+      recording modes including continuous dictation, voice activity detection, press-to-toggle,
+      and hold-to-record.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Local and API-based transcription</li>
+      <li>Multiple Whisper model sizes including turbo and distilled variants</li>
+      <li>GPU acceleration with CUDA support</li>
+      <li>Configurable activation keyboard shortcuts</li>
+      <li>Multiple recording modes</li>
+      <li>System tray integration</li>
+      <li>Voice activity detection</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">whisper-writer.desktop</launchable>
+
+  <url type="homepage">https://github.com/xak47d/open-whisper-writer</url>
+  <url type="bugtracker">https://github.com/xak47d/open-whisper-writer/issues</url>
+  <url type="vcs-browser">https://github.com/xak47d/open-whisper-writer</url>
+
+  <provides>
+    <binary>whisper-writer</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">640</display_length>
+  </requires>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#4a90d9</color>
+    <color type="primary" scheme_preference="dark">#1c3a5e</color>
+  </branding>
+
+  <releases>
+    <release version="1.1.0" date="2026-03-15">
+      <description>
+        <p>Major update with modernized packaging and model support:</p>
+        <ul>
+          <li>Added large-v3-turbo, turbo, and distilled model variants</li>
+          <li>Upgraded faster-whisper to 1.2.1 with Silero VAD V6</li>
+          <li>Added new quantization types (bfloat16, int8_float16, int8_bfloat16)</li>
+          <li>Linux packaging: .deb, PKGBUILD (Arch/AUR), and Flatpak support</li>
+          <li>Full dependency refresh</li>
+          <li>Modern pyproject.toml project structure</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.0.1" date="2024-05-20">
+      <description>
+        <p>Migrated to faster-whisper, added evdev/ydotool/dotool input backends.</p>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1" />
+</component>

@@ -1,0 +1,103 @@
+app-id: io.github.xak47d.whisper-writer
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: whisper-writer
+
+finish-args:
+  # Audio recording (PulseAudio/PipeWire)
+  - --socket=pulseaudio
+  # Display (X11 + Wayland fallback)
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  # Network access (for model downloads and OpenAI API)
+  - --share=network
+  # GPU access (for CUDA inference)
+  - --device=all
+  # Access to input devices (for key listener / evdev)
+  - --device=input
+  # Filesystem access for user config
+  - --filesystem=xdg-config/whisper-writer:create
+  # Needed for keyboard input simulation
+  - --talk-name=org.freedesktop.Flatpak
+  # DBus access for system tray
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # Env vars
+  - --env=PYTHONDONTWRITEBYTECODE=1
+
+modules:
+  # PortAudio for audio recording
+  - name: portaudio
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DPA_BUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
+        sha256: 5af29f15524e5765a60dafdad907701a5c42e41e0438d0693e2a26c88f3bd46c
+
+  # libsndfile for audio I/O
+  - name: libsndfile
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz
+        sha256: 3799ca9924d3125038880367bf1468e53a1b7e3686a934f098b7e1d286cdb80e
+
+  # Python dependencies + application
+  - name: whisper-writer
+    buildsystem: simple
+    build-options:
+      env:
+        PIP_DISABLE_PIP_VERSION_CHECK: '1'
+        PIP_NO_CACHE_DIR: '1'
+    build-commands:
+      # Install Python dependencies
+      - pip3 install --no-build-isolation --prefix=/app --no-deps .
+      # Install additional dependencies
+      - pip3 install --prefix=/app
+          "faster-whisper>=1.2.1"
+          "ctranslate2>=4.5.0"
+          "openai>=1.58.0"
+          "huggingface-hub>=0.27.0"
+          "onnxruntime>=1.20.0"
+          "numpy>=1.26.0"
+          "sounddevice>=0.5.1"
+          "soundfile>=0.12.1"
+          "PyQt5>=5.15.10"
+          "pynput>=1.7.7"
+          "PyYAML>=6.0.2"
+          "python-dotenv>=1.0.1"
+          "audioplayer>=0.6"
+          "webrtcvad-wheels>=2.0.11.post1"
+          "tokenizers>=0.21.0"
+          "tqdm>=4.67.0"
+          "requests>=2.32.0"
+          "packaging>=24.0"
+          "typing_extensions>=4.12.0"
+          "regex>=2024.11.6"
+          "Pillow>=11.0.0"
+          "tiktoken>=0.8.0"
+      # Install launcher script
+      - install -Dm755 packaging/flatpak/whisper-writer-launcher.sh /app/bin/whisper-writer
+      # Install assets and config schema
+      - mkdir -p /app/share/whisper-writer
+      - cp -r assets /app/share/whisper-writer/
+      - cp -r src /app/share/whisper-writer/
+      # Install desktop file
+      - install -Dm644 whisper-writer.desktop /app/share/applications/io.github.xak47d.whisper-writer.desktop
+      - desktop-file-edit --set-key=Exec --set-value=whisper-writer /app/share/applications/io.github.xak47d.whisper-writer.desktop
+      - desktop-file-edit --set-key=Icon --set-value=io.github.xak47d.whisper-writer /app/share/applications/io.github.xak47d.whisper-writer.desktop
+      # Install icon
+      - install -Dm644 assets/ww-logo.png /app/share/icons/hicolor/256x256/apps/io.github.xak47d.whisper-writer.png
+      # Install AppStream metadata
+      - install -Dm644 io.github.xak47d.whisper-writer.metainfo.xml /app/share/metainfo/io.github.xak47d.whisper-writer.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/xak47d/open-whisper-writer.git
+        branch: main

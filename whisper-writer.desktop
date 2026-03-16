@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=WhisperWriter
+GenericName=Voice Typing
+Comment=Speech-to-text application using OpenAI's Whisper
+Exec=whisper-writer
+Icon=whisper-writer
+Terminal=false
+Type=Application
+Categories=Audio;Utility;Accessibility;
+Keywords=whisper;speech;voice;transcription;dictation;typing;
+StartupNotify=true
+StartupWMClass=whisper-writer

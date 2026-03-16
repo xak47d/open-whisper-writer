@@ -164,7 +164,12 @@ class SettingsWindow(BaseWindow):
         return ConfigManager.get_config_value(category, key) or meta['value']
 
     def browse_model_path(self, widget):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Whisper Model File", "", "Model Files (*.bin);;All Files (*)")
+        file_path = QFileDialog.getExistingDirectory(self, "Select Whisper Model Directory")
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Select Whisper Model File", "",
+                "Model Files (*.bin *.pt);;CTranslate2 Model (model.bin);;All Files (*)"
+            )
         if file_path:
             widget.setText(file_path)
 

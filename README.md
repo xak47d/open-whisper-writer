@@ -1,6 +1,6 @@
 # <img src="./assets/ww-logo.png" alt="WhisperWriter icon" width="25" height="25"> WhisperWriter
 
-![version](https://img.shields.io/badge/version-1.0.1-blue)
+![version](https://img.shields.io/badge/version-1.1.0-blue)
 
 <p align="center">
     <img src="./assets/ww-demo-image-02.gif" alt="WhisperWriter demo gif" width="340" height="136">
@@ -28,7 +28,7 @@ The transcription can either be done locally through the [faster-whisper Python 
 Before you can run this app, you'll need to have the following software installed:
 
 - Git: [https://git-scm.com/downloads](https://git-scm.com/downloads)
-- Python `3.11`: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+- Python `3.10+`: [https://www.python.org/downloads/](https://www.python.org/downloads/)
 
 If you want to run `faster-whisper` on your GPU, you'll also need to install the following NVIDIA libraries:
 
@@ -67,41 +67,105 @@ Purfview's [whisper-standalone-win](https://github.com/Purfview/whisper-standalo
 </details>
 
 ### Installation
-To set up and run the project, follow these steps:
 
-#### 1. Clone the repository:
+WhisperWriter can be installed as a pre-built binary, a Linux package, or from source.
 
-```
-git clone https://github.com/savbell/whisper-writer
+#### Option A: Pre-built Binary (Recommended)
+
+Download the latest release from the [Releases page](https://github.com/xak47d/open-whisper-writer/releases):
+
+```bash
+# Download and extract
+tar xzf whisper-writer-linux-x86_64.tar.gz
 cd whisper-writer
+
+# Run
+./whisper-writer
 ```
 
-#### 2. Create a virtual environment and activate it:
+#### Option B: Debian/Ubuntu (.deb)
+
+```bash
+# Download the .deb from the Releases page, then:
+sudo apt install ./whisper-writer_*.deb
+
+# Launch from your application menu, or:
+whisper-writer
+```
+
+#### Option C: Arch Linux (AUR)
+
+Using the PKGBUILD from this repository:
+
+```bash
+# With an AUR helper:
+yay -S whisper-writer
+
+# Or manually:
+cd packaging/arch
+makepkg -si
+```
+
+#### Option D: Flatpak
+
+```bash
+# Download the .flatpak bundle from Releases, then:
+flatpak install whisper-writer.flatpak
+
+# Launch:
+flatpak run io.github.xak47d.whisper-writer
+```
+
+#### Option E: From Source
+
+##### 1. Clone the repository:
+
+```
+git clone https://github.com/xak47d/open-whisper-writer
+cd open-whisper-writer
+```
+
+##### 2. Create a virtual environment and activate it:
 
 ```
 python -m venv venv
-
-# For Linux and macOS:
 source venv/bin/activate
-
-# For Windows:
-venv\Scripts\activate
 ```
 
-#### 3. Install the required packages:
+##### 3. Install the package:
 
 ```
-pip install -r requirements.txt
+pip install -e .
 ```
 
-#### 4. Run the Python code:
+Or for development (includes PyInstaller, pytest, ruff):
+```
+pip install -e ".[dev]"
+```
+
+##### 4. Run:
 
 ```
 python run.py
 ```
 
-#### 5. Configure and start WhisperWriter:
+##### 5. Configure and start WhisperWriter:
 On first run, a Settings window should appear. Once configured and saved, another window will open. Press "Start" to activate the keyboard listener. Press the activation key (`ctrl+shift+space` by default) to start recording and transcribing to the active window.
+
+### Building from Source
+
+To build a standalone binary and Linux packages:
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Build PyInstaller binary
+./scripts/build.sh
+
+# Build .deb package (requires the PyInstaller build)
+./scripts/build-deb.sh
+```
 
 ### Configuration Options
 
@@ -124,12 +188,12 @@ WhisperWriter uses a configuration file to customize its behaviour. To set up th
   - `api_key`: Your API key for the OpenAI API. Required for non-local API usage. (Default: `null`)
 
 - `local`: Configuration options for the local Whisper model.
-  - `model`: The model to use for transcription. The larger models provide better accuracy but are slower. See [available models and languages](https://github.com/openai/whisper?tab=readme-ov-file#available-models-and-languages). (Default: `base`)
+  - `model`: The model to use for transcription. Larger models are more accurate but slower. `turbo`/`large-v3-turbo` offer near large-v3 quality at much higher speed. `distil-*` variants are fast distilled models. See [available models and languages](https://github.com/openai/whisper?tab=readme-ov-file#available-models-and-languages). (Default: `base`)
   - `device`: The device to run the local Whisper model on. Use `cuda` for NVIDIA GPUs, `cpu` for CPU-only processing, or `auto` to let the system automatically choose the best available device. (Default: `auto`)
-  - `compute_type`: The compute type to use for the local Whisper model. [More information on quantization here](https://opennmt.net/CTranslate2/quantization.html). (Default: `default`)
+  - `compute_type`: The compute type to use for the local Whisper model. Options: `default`, `float32`, `float16`, `bfloat16`, `int8`, `int8_float16`, `int8_bfloat16`. [More information on quantization here](https://opennmt.net/CTranslate2/quantization.html). (Default: `default`)
   - `condition_on_previous_text`: Set to `true` to use the previously transcribed text as a prompt for the next transcription request. (Default: `true`)
-  - `vad_filter`: Set to `true` to use [a voice activity detection (VAD) filter](https://github.com/snakers4/silero-vad) to remove silence from the recording. (Default: `false`)
-  - `model_path`: The path to the local Whisper model. If not specified, the default model will be downloaded. (Default: `null`)
+  - `vad_filter`: Set to `true` to use [a voice activity detection (VAD) filter](https://github.com/snakers4/silero-vad) (Silero VAD V6) to remove silence from the recording. (Default: `false`)
+  - `model_path`: The path to a local Whisper model directory or file. If not specified, the model will be downloaded automatically from Hugging Face. (Default: `null`)
 
 #### Recording Options
 - `activation_key`: The keyboard shortcut to activate the recording and transcribing process. Separate keys with a `+`. (Default: `ctrl+shift+space`)
@@ -166,7 +230,10 @@ Below are features I am planning to add in the near future:
   - [ ] Simple word replacement (e.g. "gonna" -> "going to" or "smiley face" -> "😊")
   - [ ] Using GPT for instructional post-processing
 - [x] Updating GUI
-- [ ] Creating standalone executable file
+- [x] Creating standalone executable file
+- [x] Linux packaging (.deb, PKGBUILD, Flatpak)
+- [x] Updated model support (large-v3-turbo, distil variants)
+- [x] CI/CD with GitHub Actions
 
 Below are features not currently planned:
 - [ ] Pipelining audio files
