@@ -2,6 +2,8 @@ from PyQt5.QtCore import Qt, QRectF
 from PyQt5.QtGui import QPainter, QBrush, QColor, QFont, QPainterPath, QGuiApplication
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMainWindow
 
+from ui.theme import get_palette, base_window_qss, title_label_qss, FONT_FAMILY
+
 
 class BaseWindow(QMainWindow):
     def __init__(self, title, width, height):
@@ -9,6 +11,7 @@ class BaseWindow(QMainWindow):
         Initialize the base window.
         """
         super().__init__()
+        self._palette = get_palette()
         self.initUI(title, width, height)
         self.setWindowPosition()
         self.is_dragging = False
@@ -33,27 +36,19 @@ class BaseWindow(QMainWindow):
 
         # Add the title label
         title_label = QLabel('WhisperWriter')
-        title_label.setFont(QFont('Segoe UI', 12, QFont.Bold))
+        title_label.setFont(QFont(FONT_FAMILY.split(',')[0].strip(), 12, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #404040;")
+        title_label.setStyleSheet(title_label_qss())
 
         # Create a widget for the close button
         close_button_widget = QWidget()
         close_button_layout = QHBoxLayout(close_button_widget)
         close_button_layout.setContentsMargins(0, 0, 0, 0)
 
-        close_button = QPushButton('×')
+        close_button = QPushButton('\u00d7')
+        close_button.setObjectName('close_button')
         close_button.setFixedSize(25, 25)
-        close_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-                color: #404040;
-            }
-            QPushButton:hover {
-                color: #000000;
-            }
-        """)
+        close_button.setStyleSheet(base_window_qss())
         close_button.clicked.connect(self.handleCloseButton)
 
         close_button_layout.addWidget(close_button, alignment=Qt.AlignRight)
@@ -106,12 +101,12 @@ class BaseWindow(QMainWindow):
 
     def paintEvent(self, event):
         """
-        Create a rounded rectangle with a semi-transparent white background.
+        Create a rounded rectangle with a theme-aware background.
         """
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), 20, 20)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
+        painter.setBrush(QBrush(self._palette.window_bg))
         painter.setPen(Qt.NoPen)
         painter.drawPath(path)

@@ -2,8 +2,6 @@ import time
 import traceback
 import numpy as np
 import sounddevice as sd
-import tempfile
-import wave
 import webrtcvad
 from PyQt5.QtCore import QThread, QMutex, pyqtSignal
 from collections import deque
@@ -11,6 +9,7 @@ from threading import Event
 
 from transcription import transcribe
 from utils import ConfigManager
+import llm_processor
 
 
 class ResultThread(QThread):
@@ -18,19 +17,22 @@ class ResultThread(QThread):
     A thread class for handling audio recording, transcription, and result processing.
 
     This class manages the entire process of:
-    1. Recording audio from the microphone
+    1. Recording audio from the microphone (emitting audio levels for the status bubble)
     2. Detecting speech and silence
     3. Saving the recorded audio as numpy array
     4. Transcribing the audio
-    5. Emitting the transcription result
+    5. Optionally running LLM post-processing
+    6. Emitting the final result
 
     Signals:
-        statusSignal: Emits the current status of the thread (e.g., 'recording', 'transcribing', 'idle')
-        resultSignal: Emits the transcription result
+        statusSignal: Emits the current status ('recording', 'transcribing', 'processing', 'done', 'idle', 'error')
+        resultSignal: Emits the final (possibly LLM-processed) transcription result
+        audioLevelSignal: Emits the current RMS audio level (0.0 - 1.0) during recording
     """
 
     statusSignal = pyqtSignal(str)
     resultSignal = pyqtSignal(str)
+    audioLevelSignal = pyqtSignal(float)
 
     def __init__(self, local_model=None):
         """
@@ -80,21 +82,36 @@ class ResultThread(QThread):
                 self.statusSignal.emit('idle')
                 return
 
+            # --- Transcription ---
             self.statusSignal.emit('transcribing')
             ConfigManager.console_print('Transcribing...')
 
-            # Time the transcription process
             start_time = time.time()
             result = transcribe(audio_data, self.local_model)
             end_time = time.time()
 
             transcription_time = end_time - start_time
-            ConfigManager.console_print(f'Transcription completed in {transcription_time:.2f} seconds. Post-processed line: {result}')
+            ConfigManager.console_print(f'Transcription completed in {transcription_time:.2f} seconds. Result: {result}')
 
             if not self.is_running:
                 return
 
-            self.statusSignal.emit('idle')
+            # --- LLM post-processing ---
+            if llm_processor.is_enabled() and result and result.strip():
+                self.statusSignal.emit('processing')
+                ConfigManager.console_print('Running LLM post-processing...')
+
+                llm_start = time.time()
+                result = llm_processor.process(result)
+                llm_end = time.time()
+
+                ConfigManager.console_print(f'LLM processing completed in {llm_end - llm_start:.2f} seconds. Final: {result}')
+
+                if not self.is_running:
+                    return
+
+            # --- Done ---
+            self.statusSignal.emit('done')
             self.resultSignal.emit(result)
 
         except Exception as e:
@@ -133,6 +150,9 @@ class ResultThread(QThread):
 
         data_ready = Event()
 
+        # RMS normalization: int16 max value for scaling to 0.0-1.0
+        rms_scale = 32768.0
+
         def audio_callback(indata, frames, time, status):
             if status:
                 ConfigManager.console_print(f"Audio callback status: {status}")
@@ -153,6 +173,12 @@ class ResultThread(QThread):
                 frame = np.array(list(audio_buffer), dtype=np.int16)
                 audio_buffer.clear()
                 recording.extend(frame)
+
+                # Compute and emit audio level (RMS normalized to 0.0-1.0)
+                rms = np.sqrt(np.mean(frame.astype(np.float32) ** 2)) / rms_scale
+                # Clamp and apply a slight curve for better visual response
+                level = min(1.0, rms * 3.0)  # amplify since speech RMS is typically low
+                self.audioLevelSignal.emit(level)
 
                 # Avoid trying to detect voice in initial frames
                 if initial_frames_to_skip > 0:

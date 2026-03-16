@@ -3,7 +3,7 @@ model_options:
   use_api:
     value: false
     type: bool
-    description: "Toggle to choose whether to use the OpenAI API or a local Whisper model for transcription."
+    description: "Toggle to choose whether to use a cloud API or a local Whisper model for transcription."
 
   # Common configuration options for both API and local models
   common:
@@ -20,20 +20,55 @@ model_options:
       type: str
       description: "A string used as an initial prompt to condition the transcription. More info: https://platform.openai.com/docs/guides/speech-to-text/prompting"
 
-  # Configuration options for the OpenAI API
+  # Configuration options for cloud API providers
   api:
-    model:
-      value: whisper-1
+    provider:
+      value: openai
       type: str
-      description: "The model to use for transcription. Currently only 'whisper-1' is available."
-    base_url:
-      value: https://api.openai.com/v1
-      type: str
-      description: "The base URL for the API. Can be changed to use a local API endpoint."
-    api_key:
+      description: "The cloud transcription provider to use."
+      options:
+        - openai
+        - groq
+        - deepgram
+    openai_api_key:
       value: null
       type: str
-      description: "Your API key for the OpenAI API. Required for non-local API usage."
+      description: "Your API key for the OpenAI API."
+    openai_model:
+      value: gpt-4o-mini-transcribe
+      type: str
+      description: "The OpenAI model to use for transcription."
+      options:
+        - whisper-1
+        - gpt-4o-transcribe
+        - gpt-4o-mini-transcribe
+    openai_base_url:
+      value: https://api.openai.com/v1
+      type: str
+      description: "The base URL for the OpenAI-compatible API. Change this to use alternative endpoints."
+    groq_api_key:
+      value: null
+      type: str
+      description: "Your API key for the Groq API."
+    groq_model:
+      value: whisper-large-v3-turbo
+      type: str
+      description: "The Groq model to use for transcription."
+      options:
+        - whisper-large-v3
+        - whisper-large-v3-turbo
+        - distil-whisper-large-v3-en
+    deepgram_api_key:
+      value: null
+      type: str
+      description: "Your API key for the Deepgram API."
+    deepgram_model:
+      value: nova-3
+      type: str
+      description: "The Deepgram model to use for transcription."
+      options:
+        - nova-3
+        - nova-2
 
   # Configuration options for the faster-whisper model
   local:
@@ -135,6 +170,14 @@ recording_options:
 
 # Post-processing options for the transcribed text
 post_processing:
+  output_mode:
+    value: type
+    type: str
+    description: "How to output the transcribed text. 'type' simulates keyboard input, 'clipboard' copies to clipboard, 'type_and_clipboard' does both."
+    options:
+      - type
+      - clipboard
+      - type_and_clipboard
   writing_key_press_delay:
     value: 0.005
     type: float
@@ -160,6 +203,50 @@ post_processing:
       - ydotool
       - dotool
 
+# LLM post-processing options
+llm_processing:
+  enabled:
+    value: false
+    type: bool
+    description: "Enable LLM post-processing to clean up, rewrite, or transform transcribed text."
+  provider:
+    value: openai
+    type: str
+    description: "The LLM provider to use for post-processing."
+    options:
+      - openai
+      - anthropic
+      - ollama
+  model:
+    value: gpt-4o-mini
+    type: str
+    description: "The LLM model to use for post-processing."
+  api_key:
+    value: null
+    type: str
+    description: "The API key for the LLM provider. Not needed for Ollama."
+  base_url:
+    value: null
+    type: str
+    description: "Custom base URL for the LLM API. Leave empty for default endpoints. For Ollama, defaults to http://localhost:11434."
+  mode:
+    value: clean_up
+    type: str
+    description: "The processing mode. 'clean_up' fixes grammar and filler words. 'formal' rewrites in professional tone. 'translate' translates to target language. 'custom' uses your custom prompt."
+    options:
+      - clean_up
+      - formal
+      - translate
+      - custom
+  target_language:
+    value: English
+    type: str
+    description: "The target language for translation mode."
+  custom_prompt:
+    value: null
+    type: str
+    description: "Custom system prompt for the LLM. Used when mode is 'custom'."
+
 # Miscellaneous settings
 misc:
   print_to_terminal:
@@ -169,8 +256,8 @@ misc:
   hide_status_window:
     value: false
     type: bool
-    description: "Set to true to hide the status window during operation."
+    description: "Set to true to hide the animated status bubble during operation."
   noise_on_completion:
     value: false
     type: bool
-    description: "Set to true to play a noise after the transcription has been typed out."
+    description: "Set to true to play a notification sound after the transcription has been typed out."

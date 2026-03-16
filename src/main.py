@@ -57,7 +57,6 @@ class WhisperWriterApp(QObject):
         self.key_listener.add_callback("on_deactivate", self.on_deactivation)
 
         model_options = ConfigManager.get_config_section('model_options')
-        model_path = model_options.get('local', {}).get('model_path')
         self.local_model = create_local_model() if not model_options.get('use_api') else None
 
         self.result_thread = None
@@ -67,6 +66,8 @@ class WhisperWriterApp(QObject):
         self.main_window.startListening.connect(self.key_listener.start)
         self.main_window.closeApp.connect(self.exit_app)
 
+        # Status bubble (unless hidden)
+        self.status_window = None
         if not ConfigManager.get_config_value('misc', 'hide_status_window'):
             self.status_window = StatusWindow()
 
@@ -75,12 +76,66 @@ class WhisperWriterApp(QObject):
 
     def create_tray_icon(self):
         """
-        Create the system tray icon and its context menu.
+        Create the system tray icon and its context menu with state indicators
+        and quick toggles.
         """
         self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo.png')), self.app)
 
         tray_menu = QMenu()
 
+        # --- Status header ---
+        self._tray_status_action = QAction('Status: Idle', self.app)
+        self._tray_status_action.setEnabled(False)
+        tray_menu.addAction(self._tray_status_action)
+
+        tray_menu.addSeparator()
+
+        # --- Provider info ---
+        provider_label = self._get_provider_label()
+        self._tray_provider_action = QAction(provider_label, self.app)
+        self._tray_provider_action.setEnabled(False)
+        tray_menu.addAction(self._tray_provider_action)
+
+        tray_menu.addSeparator()
+
+        # --- Quick toggles ---
+        # Output mode toggle
+        output_mode = ConfigManager.get_config_value('post_processing', 'output_mode') or 'type'
+        self._output_mode_menu = QMenu('Output Mode', self.app)
+        self._output_mode_actions = {}
+        for mode in ('type', 'clipboard', 'type_and_clipboard'):
+            action = QAction(mode.replace('_', ' ').title(), self.app)
+            action.setCheckable(True)
+            action.setChecked(mode == output_mode)
+            action.triggered.connect(lambda checked, m=mode: self._set_output_mode(m))
+            self._output_mode_menu.addAction(action)
+            self._output_mode_actions[mode] = action
+        tray_menu.addMenu(self._output_mode_menu)
+
+        # LLM processing toggle
+        llm_enabled = ConfigManager.get_config_value('llm_processing', 'enabled') or False
+        self._llm_toggle_action = QAction('LLM Processing', self.app)
+        self._llm_toggle_action.setCheckable(True)
+        self._llm_toggle_action.setChecked(llm_enabled)
+        self._llm_toggle_action.triggered.connect(self._toggle_llm_processing)
+        tray_menu.addAction(self._llm_toggle_action)
+
+        # LLM mode submenu
+        llm_mode = ConfigManager.get_config_value('llm_processing', 'mode') or 'clean_up'
+        self._llm_mode_menu = QMenu('LLM Mode', self.app)
+        self._llm_mode_actions = {}
+        for mode in ('clean_up', 'formal', 'translate', 'custom'):
+            action = QAction(mode.replace('_', ' ').title(), self.app)
+            action.setCheckable(True)
+            action.setChecked(mode == llm_mode)
+            action.triggered.connect(lambda checked, m=mode: self._set_llm_mode(m))
+            self._llm_mode_menu.addAction(action)
+            self._llm_mode_actions[mode] = action
+        tray_menu.addMenu(self._llm_mode_menu)
+
+        tray_menu.addSeparator()
+
+        # --- Standard actions ---
         show_action = QAction('WhisperWriter Main Menu', self.app)
         show_action.triggered.connect(self.main_window.show)
         tray_menu.addAction(show_action)
@@ -94,7 +149,76 @@ class WhisperWriterApp(QObject):
         tray_menu.addAction(exit_action)
 
         self.tray_icon.setContextMenu(tray_menu)
+        self._update_tray_tooltip()
         self.tray_icon.show()
+
+    def _get_provider_label(self):
+        """Build a label showing the current transcription provider + model."""
+        use_api = ConfigManager.get_config_value('model_options', 'use_api')
+        if use_api:
+            provider = ConfigManager.get_config_value('model_options', 'api', 'provider') or 'openai'
+            model_field = f'{provider}_model'
+            model = ConfigManager.get_config_value('model_options', 'api', model_field) or '?'
+            return f'Provider: {provider.title()} / {model}'
+        else:
+            local_opts = ConfigManager.get_config_section('model_options').get('local', {})
+            model = local_opts.get('model_path') or local_opts.get('model') or 'base'
+            return f'Provider: Local / {model}'
+
+    def _update_tray_tooltip(self):
+        """Update the tray icon tooltip with current config info."""
+        provider_label = self._get_provider_label()
+        output_mode = ConfigManager.get_config_value('post_processing', 'output_mode') or 'type'
+        llm_enabled = ConfigManager.get_config_value('llm_processing', 'enabled') or False
+        llm_mode = ConfigManager.get_config_value('llm_processing', 'mode') or 'clean_up'
+
+        tooltip_lines = [
+            'WhisperWriter',
+            provider_label,
+            f'Output: {output_mode.replace("_", " ").title()}',
+        ]
+        if llm_enabled:
+            tooltip_lines.append(f'LLM: {llm_mode.replace("_", " ").title()}')
+        self.tray_icon.setToolTip('\n'.join(tooltip_lines))
+
+    def _update_tray_status(self, status):
+        """Update the status line in the tray menu."""
+        status_map = {
+            'idle': 'Idle',
+            'recording': 'Recording...',
+            'transcribing': 'Transcribing...',
+            'processing': 'LLM Processing...',
+            'done': 'Done',
+            'error': 'Error',
+        }
+        label = status_map.get(status, status.title())
+        if hasattr(self, '_tray_status_action'):
+            self._tray_status_action.setText(f'Status: {label}')
+
+    def _set_output_mode(self, mode):
+        """Quick-toggle output mode from tray."""
+        ConfigManager.set_config_value(mode, 'post_processing', 'output_mode')
+        ConfigManager.save_config()
+        for m, action in self._output_mode_actions.items():
+            action.setChecked(m == mode)
+        self._update_tray_tooltip()
+        ConfigManager.console_print(f'Output mode changed to: {mode}')
+
+    def _toggle_llm_processing(self, checked):
+        """Quick-toggle LLM processing from tray."""
+        ConfigManager.set_config_value(checked, 'llm_processing', 'enabled')
+        ConfigManager.save_config()
+        self._update_tray_tooltip()
+        ConfigManager.console_print(f'LLM processing {"enabled" if checked else "disabled"}')
+
+    def _set_llm_mode(self, mode):
+        """Quick-toggle LLM mode from tray."""
+        ConfigManager.set_config_value(mode, 'llm_processing', 'mode')
+        ConfigManager.save_config()
+        for m, action in self._llm_mode_actions.items():
+            action.setChecked(m == mode)
+        self._update_tray_tooltip()
+        ConfigManager.console_print(f'LLM mode changed to: {mode}')
 
     def cleanup(self):
         if self.key_listener:
@@ -157,9 +281,14 @@ class WhisperWriterApp(QObject):
             return
 
         self.result_thread = ResultThread(self.local_model)
-        if not ConfigManager.get_config_value('misc', 'hide_status_window'):
+
+        # Connect status signal to bubble + tray
+        self.result_thread.statusSignal.connect(self._update_tray_status)
+        if self.status_window:
             self.result_thread.statusSignal.connect(self.status_window.updateStatus)
+            self.result_thread.audioLevelSignal.connect(self.status_window._on_audio_level)
             self.status_window.closeSignal.connect(self.stop_result_thread)
+
         self.result_thread.resultSignal.connect(self.on_transcription_complete)
         self.result_thread.start()
 
@@ -172,9 +301,11 @@ class WhisperWriterApp(QObject):
 
     def on_transcription_complete(self, result):
         """
-        When the transcription is complete, type the result and start listening for the activation key again.
+        When the transcription is complete, output the result using the configured
+        output mode and start listening for the activation key again.
         """
-        self.input_simulator.typewrite(result)
+        # Use the new output() method which respects output_mode config
+        self.input_simulator.output(result)
 
         if ConfigManager.get_config_value('misc', 'noise_on_completion'):
             AudioPlayer(os.path.join('assets', 'beep.wav')).play(block=True)

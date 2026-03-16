@@ -1,17 +1,62 @@
+"""Modernized settings window for WhisperWriter.
+
+Restructured tabs: Transcription, Recording, Processing, Output, General.
+Dynamic show/hide of provider-specific fields when provider dropdowns change.
+Multi-provider API key storage in .env file.
+Theme-aware styling via the shared theme module.
+"""
+
 import os
 import sys
 from dotenv import set_key, load_dotenv
 from PyQt5.QtWidgets import (
-    QApplication, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox,
-    QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QToolButton, QStyle, QFileDialog
+    QApplication, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QComboBox, QCheckBox, QMessageBox, QTabWidget, QWidget, QSizePolicy,
+    QSpacerItem, QToolButton, QStyle, QFileDialog, QScrollArea, QGroupBox,
+    QTextEdit, QFrame
 )
-from PyQt5.QtCore import Qt, QCoreApplication, QProcess, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QFont
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ui.base_window import BaseWindow
+from ui.theme import settings_window_qss
 from utils import ConfigManager
 
 load_dotenv()
+
+
+# ---------------------------------------------------------------------------
+# Env-key mapping for API keys
+# ---------------------------------------------------------------------------
+
+API_KEY_ENV_MAP = {
+    # schema path -> env var name
+    ('model_options', 'api', 'openai_api_key'): 'OPENAI_API_KEY',
+    ('model_options', 'api', 'groq_api_key'): 'GROQ_API_KEY',
+    ('model_options', 'api', 'deepgram_api_key'): 'DEEPGRAM_API_KEY',
+    ('llm_processing', 'api_key'): 'LLM_API_KEY',
+}
+
+# Which provider fields to show for each transcription provider
+TRANSCRIPTION_PROVIDER_FIELDS = {
+    'openai': ['openai_api_key', 'openai_model', 'openai_base_url'],
+    'groq': ['groq_api_key', 'groq_model'],
+    'deepgram': ['deepgram_api_key', 'deepgram_model'],
+}
+
+# All API fields that can be toggled
+ALL_API_FIELDS = set()
+for fields in TRANSCRIPTION_PROVIDER_FIELDS.values():
+    ALL_API_FIELDS.update(fields)
+
+# Which LLM fields to show for each LLM provider
+LLM_PROVIDER_FIELDS = {
+    'openai': ['api_key', 'base_url', 'model'],
+    'anthropic': ['api_key', 'model'],
+    'ollama': ['base_url', 'model'],
+}
+
 
 class SettingsWindow(BaseWindow):
     settings_closed = pyqtSignal()
@@ -19,151 +64,492 @@ class SettingsWindow(BaseWindow):
 
     def __init__(self):
         """Initialize the settings window."""
-        super().__init__('Settings', 700, 700)
+        super().__init__('Settings', 750, 750)
         self.schema = ConfigManager.get_schema()
+        self._widgets = {}  # key: (category, [sub_category,] key) -> widget
+        self._rows = {}     # key: same tuple -> row QWidget (for show/hide)
         self.init_settings_ui()
 
     def init_settings_ui(self):
         """Initialize the settings user interface."""
+        self.setStyleSheet(settings_window_qss())
+
         self.tabs = QTabWidget()
         self.main_layout.addWidget(self.tabs)
 
-        self.create_tabs()
-        self.create_buttons()
+        self._build_transcription_tab()
+        self._build_recording_tab()
+        self._build_processing_tab()
+        self._build_output_tab()
+        self._build_general_tab()
 
-        # Connect the use_api checkbox state change
-        self.use_api_checkbox = self.findChild(QCheckBox, 'model_options_use_api_input')
-        if self.use_api_checkbox:
-            self.use_api_checkbox.stateChanged.connect(lambda: self.toggle_api_local_options(self.use_api_checkbox.isChecked()))
-            self.toggle_api_local_options(self.use_api_checkbox.isChecked())
+        self._create_buttons()
 
-    def create_tabs(self):
-        """Create tabs for each category in the schema."""
-        for category, settings in self.schema.items():
-            tab = QWidget()
-            tab_layout = QVBoxLayout()
-            tab.setLayout(tab_layout)
-            self.tabs.addTab(tab, category.replace('_', ' ').capitalize())
+        # Set initial visibility
+        self._on_use_api_changed()
+        self._on_transcription_provider_changed()
+        self._on_llm_provider_changed()
+        self._on_llm_enabled_changed()
 
-            self.create_settings_widgets(tab_layout, category, settings)
-            tab_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+    # ===================================================================
+    # Tab builders
+    # ===================================================================
 
-    def create_settings_widgets(self, layout, category, settings):
-        """Create widgets for each setting in a category."""
-        for sub_category, sub_settings in settings.items():
-            if isinstance(sub_settings, dict) and 'value' in sub_settings:
-                self.add_setting_widget(layout, sub_category, sub_settings, category)
-            else:
-                for key, meta in sub_settings.items():
-                    self.add_setting_widget(layout, key, meta, category, sub_category)
+    def _build_transcription_tab(self):
+        """Build the Transcription tab: use_api toggle, common options, provider-specific API fields, local fields."""
+        tab = self._make_scrollable_tab('Transcription')
 
-    def create_buttons(self):
-        """Create reset and save buttons."""
-        reset_button = QPushButton('Reset to saved settings')
-        reset_button.clicked.connect(self.reset_settings)
-        self.main_layout.addWidget(reset_button)
+        # --- API / Local toggle ---
+        self._add_schema_row(tab, 'model_options', None, 'use_api')
 
-        save_button = QPushButton('Save')
-        save_button.clicked.connect(self.save_settings)
-        self.main_layout.addWidget(save_button)
+        # --- Common transcription settings ---
+        group = QGroupBox('Common Settings')
+        group_layout = QVBoxLayout()
+        group.setLayout(group_layout)
+        for key in ('language', 'temperature', 'initial_prompt'):
+            self._add_schema_row(group_layout, 'model_options', 'common', key)
+        tab.addWidget(group)
 
-    def add_setting_widget(self, layout, key, meta, category, sub_category=None):
-        """Add a setting widget to the layout."""
-        item_layout = QHBoxLayout()
-        label = QLabel(f"{key.replace('_', ' ').capitalize()}:")
+        # --- API provider settings ---
+        self._api_group = QGroupBox('Cloud API Settings')
+        api_layout = QVBoxLayout()
+        self._api_group.setLayout(api_layout)
+
+        self._add_schema_row(api_layout, 'model_options', 'api', 'provider')
+        for key in ('openai_api_key', 'openai_model', 'openai_base_url',
+                     'groq_api_key', 'groq_model',
+                     'deepgram_api_key', 'deepgram_model'):
+            self._add_schema_row(api_layout, 'model_options', 'api', key)
+
+        tab.addWidget(self._api_group)
+
+        # --- Local model settings ---
+        self._local_group = QGroupBox('Local Model Settings')
+        local_layout = QVBoxLayout()
+        self._local_group.setLayout(local_layout)
+        for key in ('model', 'device', 'compute_type', 'condition_on_previous_text',
+                     'vad_filter', 'model_path'):
+            self._add_schema_row(local_layout, 'model_options', 'local', key)
+        tab.addWidget(self._local_group)
+
+        tab.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+        # --- Connect dynamic toggles ---
+        use_api_widget = self._widgets.get(('model_options', 'use_api'))
+        if use_api_widget:
+            use_api_widget.stateChanged.connect(lambda: self._on_use_api_changed())
+
+        provider_widget = self._widgets.get(('model_options', 'api', 'provider'))
+        if provider_widget:
+            provider_widget.currentTextChanged.connect(lambda: self._on_transcription_provider_changed())
+
+    def _build_recording_tab(self):
+        """Build the Recording tab."""
+        tab = self._make_scrollable_tab('Recording')
+        for key in ('activation_key', 'input_backend', 'recording_mode',
+                     'sound_device', 'sample_rate', 'silence_duration', 'min_duration'):
+            self._add_schema_row(tab, 'recording_options', None, key)
+        tab.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+    def _build_processing_tab(self):
+        """Build the Processing tab: LLM post-processing settings."""
+        tab = self._make_scrollable_tab('LLM Processing')
+
+        self._add_schema_row(tab, 'llm_processing', None, 'enabled')
+
+        self._llm_settings_group = QGroupBox('LLM Settings')
+        llm_layout = QVBoxLayout()
+        self._llm_settings_group.setLayout(llm_layout)
+
+        for key in ('provider', 'model', 'api_key', 'base_url', 'mode',
+                     'target_language', 'custom_prompt'):
+            self._add_schema_row(llm_layout, 'llm_processing', None, key)
+        tab.addWidget(self._llm_settings_group)
+
+        tab.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+        # Connect dynamic toggles
+        llm_enabled_widget = self._widgets.get(('llm_processing', 'enabled'))
+        if llm_enabled_widget:
+            llm_enabled_widget.stateChanged.connect(lambda: self._on_llm_enabled_changed())
+
+        llm_provider_widget = self._widgets.get(('llm_processing', 'provider'))
+        if llm_provider_widget:
+            llm_provider_widget.currentTextChanged.connect(lambda: self._on_llm_provider_changed())
+
+        llm_mode_widget = self._widgets.get(('llm_processing', 'mode'))
+        if llm_mode_widget:
+            llm_mode_widget.currentTextChanged.connect(lambda: self._on_llm_mode_changed())
+
+    def _build_output_tab(self):
+        """Build the Output tab: output mode + text post-processing."""
+        tab = self._make_scrollable_tab('Output')
+
+        group = QGroupBox('Output Mode')
+        group_layout = QVBoxLayout()
+        group.setLayout(group_layout)
+        self._add_schema_row(group_layout, 'post_processing', None, 'output_mode')
+        tab.addWidget(group)
+
+        group2 = QGroupBox('Text Post-Processing')
+        group2_layout = QVBoxLayout()
+        group2.setLayout(group2_layout)
+        for key in ('remove_trailing_period', 'add_trailing_space', 'remove_capitalization'):
+            self._add_schema_row(group2_layout, 'post_processing', None, key)
+        tab.addWidget(group2)
+
+        group3 = QGroupBox('Input Simulation')
+        group3_layout = QVBoxLayout()
+        group3.setLayout(group3_layout)
+        for key in ('input_method', 'writing_key_press_delay'):
+            self._add_schema_row(group3_layout, 'post_processing', None, key)
+        tab.addWidget(group3)
+
+        tab.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+    def _build_general_tab(self):
+        """Build the General tab: misc settings."""
+        tab = self._make_scrollable_tab('General')
+        for key in ('print_to_terminal', 'hide_status_window', 'noise_on_completion'):
+            self._add_schema_row(tab, 'misc', None, key)
+        tab.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+    # ===================================================================
+    # Dynamic visibility
+    # ===================================================================
+
+    def _on_use_api_changed(self):
+        """Show/hide API vs local model groups."""
+        use_api_widget = self._widgets.get(('model_options', 'use_api'))
+        use_api = use_api_widget.isChecked() if use_api_widget else False
+        self._api_group.setVisible(use_api)
+        self._local_group.setVisible(not use_api)
+
+    def _on_transcription_provider_changed(self):
+        """Show/hide per-provider API fields."""
+        provider_widget = self._widgets.get(('model_options', 'api', 'provider'))
+        provider = provider_widget.currentText() if provider_widget else 'openai'
+        visible_fields = set(TRANSCRIPTION_PROVIDER_FIELDS.get(provider, []))
+
+        for field in ALL_API_FIELDS:
+            row_key = ('model_options', 'api', field)
+            row = self._rows.get(row_key)
+            if row:
+                row.setVisible(field in visible_fields)
+
+    def _on_llm_enabled_changed(self):
+        """Show/hide LLM settings group."""
+        enabled_widget = self._widgets.get(('llm_processing', 'enabled'))
+        enabled = enabled_widget.isChecked() if enabled_widget else False
+        self._llm_settings_group.setVisible(enabled)
+
+    def _on_llm_provider_changed(self):
+        """Show/hide per-provider LLM fields."""
+        provider_widget = self._widgets.get(('llm_processing', 'provider'))
+        provider = provider_widget.currentText() if provider_widget else 'openai'
+        visible_fields = set(LLM_PROVIDER_FIELDS.get(provider, []))
+
+        for field in ('api_key', 'base_url', 'model'):
+            row_key = ('llm_processing', field)
+            row = self._rows.get(row_key)
+            if row:
+                row.setVisible(field in visible_fields)
+
+    def _on_llm_mode_changed(self):
+        """Show/hide translate/custom fields based on LLM mode."""
+        mode_widget = self._widgets.get(('llm_processing', 'mode'))
+        mode = mode_widget.currentText() if mode_widget else 'clean_up'
+
+        lang_row = self._rows.get(('llm_processing', 'target_language'))
+        if lang_row:
+            lang_row.setVisible(mode == 'translate')
+
+        custom_row = self._rows.get(('llm_processing', 'custom_prompt'))
+        if custom_row:
+            custom_row.setVisible(mode == 'custom')
+
+    # ===================================================================
+    # Widget factory
+    # ===================================================================
+
+    def _make_scrollable_tab(self, title):
+        """Create a scrollable tab and return its inner layout."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        container = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        container.setLayout(layout)
+        scroll.setWidget(container)
+        self.tabs.addTab(scroll, title)
+        return layout
+
+    def _add_schema_row(self, layout, category, sub_category, key):
+        """Add a single setting row (label + widget + help) from the schema."""
+        meta = self._get_meta(category, sub_category, key)
+        if meta is None:
+            return
+
+        # Row container
+        row_widget = QWidget()
+        row_layout = QHBoxLayout()
+        row_layout.setContentsMargins(0, 2, 0, 2)
+        row_widget.setLayout(row_layout)
+
+        # Label
+        label_text = key.replace('_', ' ').replace('api key', 'API key').capitalize()
+        label = QLabel(f'{label_text}:')
         label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        label.setMinimumWidth(180)
 
-        widget = self.create_widget_for_type(key, meta, category, sub_category)
+        # Input widget
+        widget = self._create_input_widget(category, sub_category, key, meta)
         if not widget:
             return
 
-        help_button = self.create_help_button(meta.get('description', ''))
+        # Help button
+        help_btn = QToolButton()
+        help_btn.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxQuestion))
+        help_btn.setAutoRaise(True)
+        help_btn.setToolTip(meta.get('description', ''))
+        help_btn.setCursor(Qt.PointingHandCursor)
+        desc = meta.get('description', '')
+        help_btn.clicked.connect(lambda _, d=desc: QMessageBox.information(self, 'Info', d))
 
-        item_layout.addWidget(label)
-        if isinstance(widget, QWidget):
-            item_layout.addWidget(widget)
+        row_layout.addWidget(label)
+        row_layout.addWidget(widget, 1)
+        row_layout.addWidget(help_btn)
+
+        if isinstance(layout, QVBoxLayout):
+            layout.addWidget(row_widget)
         else:
-            item_layout.addLayout(widget)
-        item_layout.addWidget(help_button)
-        layout.addLayout(item_layout)
+            layout.addWidget(row_widget)
 
-        # Set object names for the widget, label, and help button
-        widget_name = f"{category}_{sub_category}_{key}_input" if sub_category else f"{category}_{key}_input"
-        label_name = f"{category}_{sub_category}_{key}_label" if sub_category else f"{category}_{key}_label"
-        help_name = f"{category}_{sub_category}_{key}_help" if sub_category else f"{category}_{key}_help"
-        
-        label.setObjectName(label_name)
-        help_button.setObjectName(help_name)
-        
-        if isinstance(widget, QWidget):
-            widget.setObjectName(widget_name)
-        else:
-            # If it's a layout (for model_path), set the object name on the QLineEdit
-            line_edit = widget.itemAt(0).widget()
-            if isinstance(line_edit, QLineEdit):
-                line_edit.setObjectName(widget_name)
+        # Store references
+        widget_key = (category, sub_category, key) if sub_category else (category, key)
+        self._widgets[widget_key] = widget
+        self._rows[widget_key] = row_widget
 
-    def create_widget_for_type(self, key, meta, category, sub_category):
-        """Create a widget based on the meta type."""
+    def _create_input_widget(self, category, sub_category, key, meta):
+        """Create the appropriate input widget based on meta type."""
         meta_type = meta.get('type')
-        current_value = self.get_config_value(category, sub_category, key, meta)
+        current_value = self._get_current_value(category, sub_category, key, meta)
 
         if meta_type == 'bool':
-            return self.create_checkbox(current_value, key)
-        elif meta_type == 'str' and 'options' in meta:
-            return self.create_combobox(current_value, meta['options'])
-        elif meta_type == 'str':
-            return self.create_line_edit(current_value, key)
-        elif meta_type in ['int', 'float']:
-            return self.create_line_edit(str(current_value))
+            widget = QCheckBox()
+            widget.setChecked(bool(current_value))
+            return widget
+
+        if meta_type == 'str' and 'options' in meta:
+            widget = QComboBox()
+            widget.addItems(meta['options'])
+            if current_value:
+                widget.setCurrentText(str(current_value))
+            return widget
+
+        if meta_type == 'str':
+            # Special case: API keys -> password mode, load from env
+            is_api_key = 'api_key' in key
+            # Special case: custom_prompt -> multi-line
+            is_multiline = key == 'custom_prompt'
+
+            if is_multiline:
+                widget = QTextEdit()
+                widget.setMaximumHeight(80)
+                widget.setPlainText(str(current_value) if current_value else '')
+                return widget
+
+            widget = QLineEdit()
+            if is_api_key:
+                widget.setEchoMode(QLineEdit.Password)
+                # Try to load from env
+                env_var = self._env_var_for(category, sub_category, key)
+                env_val = os.getenv(env_var) if env_var else None
+                widget.setText(env_val or (str(current_value) if current_value else ''))
+            elif key == 'model_path':
+                container = QWidget()
+                container_layout = QHBoxLayout()
+                container_layout.setContentsMargins(0, 0, 0, 0)
+                container.setLayout(container_layout)
+                line_edit = QLineEdit(str(current_value) if current_value else '')
+                browse_btn = QPushButton('Browse')
+                browse_btn.clicked.connect(lambda _, le=line_edit: self._browse_model_path(le))
+                container_layout.addWidget(line_edit, 1)
+                container_layout.addWidget(browse_btn)
+                # Store the line_edit as the actual value widget
+                container._value_widget = line_edit
+                return container
+            else:
+                widget.setText(str(current_value) if current_value else '')
+            return widget
+
+        if meta_type in ('int', 'float'):
+            widget = QLineEdit()
+            widget.setText(str(current_value) if current_value is not None else '')
+            return widget
+
         return None
 
-    def create_checkbox(self, value, key):
-        widget = QCheckBox()
-        widget.setChecked(value)
-        if key == 'use_api':
-            widget.setObjectName('model_options_use_api_input')
-        return widget
-
-    def create_combobox(self, value, options):
-        widget = QComboBox()
-        widget.addItems(options)
-        widget.setCurrentText(value)
-        return widget
-
-    def create_line_edit(self, value, key=None):
-        widget = QLineEdit(value)
-        if key == 'api_key':
-            widget.setEchoMode(QLineEdit.Password)
-            widget.setText(os.getenv('OPENAI_API_KEY') or value)
-        elif key == 'model_path':
-            layout = QHBoxLayout()
-            layout.addWidget(widget)
-            browse_button = QPushButton('Browse')
-            browse_button.clicked.connect(lambda: self.browse_model_path(widget))
-            layout.addWidget(browse_button)
-            layout.setContentsMargins(0, 0, 0, 0)
-            container = QWidget()
-            container.setLayout(layout)
-            return container
-        return widget
-
-    def create_help_button(self, description):
-        help_button = QToolButton()
-        help_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxQuestion))
-        help_button.setAutoRaise(True)
-        help_button.setToolTip(description)
-        help_button.setCursor(Qt.PointingHandCursor)
-        help_button.setFocusPolicy(Qt.TabFocus)
-        help_button.clicked.connect(lambda: self.show_description(description))
-        return help_button
-
-    def get_config_value(self, category, sub_category, key, meta):
+    def _get_meta(self, category, sub_category, key):
+        """Get the schema metadata for a setting."""
+        schema = self.schema
+        if category not in schema:
+            return None
+        cat = schema[category]
         if sub_category:
-            return ConfigManager.get_config_value(category, sub_category, key) or meta['value']
-        return ConfigManager.get_config_value(category, key) or meta['value']
+            if sub_category not in cat:
+                return None
+            sub = cat[sub_category]
+            return sub.get(key)
+        else:
+            item = cat.get(key)
+            if isinstance(item, dict) and 'value' in item:
+                return item
+            return None
 
-    def browse_model_path(self, widget):
+    def _get_current_value(self, category, sub_category, key, meta):
+        """Get the current config value, falling back to schema default."""
+        if sub_category:
+            val = ConfigManager.get_config_value(category, sub_category, key)
+        else:
+            val = ConfigManager.get_config_value(category, key)
+        if val is None:
+            val = meta.get('value')
+        return val
+
+    def _env_var_for(self, category, sub_category, key):
+        """Return the environment variable name for a given API key field, or None."""
+        if sub_category:
+            config_path = (category, sub_category, key)
+        else:
+            config_path = (category, key)
+        return API_KEY_ENV_MAP.get(config_path)
+
+    # ===================================================================
+    # Buttons
+    # ===================================================================
+
+    def _create_buttons(self):
+        """Create reset and save buttons."""
+        btn_layout = QHBoxLayout()
+
+        reset_button = QPushButton('Reset to Saved')
+        reset_button.clicked.connect(self._reset_settings)
+        btn_layout.addWidget(reset_button)
+
+        save_button = QPushButton('Save && Restart')
+        save_button.setObjectName('save_button')
+        save_button.clicked.connect(self._save_settings)
+        btn_layout.addWidget(save_button)
+
+        self.main_layout.addLayout(btn_layout)
+
+    # ===================================================================
+    # Save / Reset
+    # ===================================================================
+
+    def _save_settings(self):
+        """Save all settings to config + .env."""
+        # Iterate all registered widgets and write values to ConfigManager
+        for widget_key, widget in self._widgets.items():
+            meta = self._get_meta_from_key(widget_key)
+            if meta is None:
+                continue
+            value = self._get_widget_value(widget, meta.get('type'))
+
+            # Write API keys to .env, not config
+            env_var = API_KEY_ENV_MAP.get(widget_key)
+            if env_var:
+                key_value = value or ''
+                set_key('.env', env_var, key_value)
+                os.environ[env_var] = key_value
+                # Store None in config so the key isn't in the YAML
+                self._set_config_from_key(widget_key, None)
+            else:
+                self._set_config_from_key(widget_key, value)
+
+        ConfigManager.save_config()
+        QMessageBox.information(self, 'Settings Saved',
+                                'Settings saved. The application will now restart.')
+        self.settings_saved.emit()
+        self.close()
+
+    def _reset_settings(self):
+        """Reset all widgets to saved config values."""
+        ConfigManager.reload_config()
+        for widget_key, widget in self._widgets.items():
+            meta = self._get_meta_from_key(widget_key)
+            if meta is None:
+                continue
+            if len(widget_key) == 3:
+                val = ConfigManager.get_config_value(*widget_key)
+            else:
+                val = ConfigManager.get_config_value(*widget_key)
+            if val is None:
+                val = meta.get('value')
+            self._set_widget_value(widget, val, meta.get('type'))
+
+        # Re-run visibility toggles
+        self._on_use_api_changed()
+        self._on_transcription_provider_changed()
+        self._on_llm_enabled_changed()
+        self._on_llm_provider_changed()
+        self._on_llm_mode_changed()
+
+    # ===================================================================
+    # Helpers
+    # ===================================================================
+
+    def _get_meta_from_key(self, widget_key):
+        """Look up schema metadata from a widget key tuple."""
+        if len(widget_key) == 3:
+            return self._get_meta(widget_key[0], widget_key[1], widget_key[2])
+        elif len(widget_key) == 2:
+            return self._get_meta(widget_key[0], None, widget_key[1])
+        return None
+
+    def _set_config_from_key(self, widget_key, value):
+        """Set config value from a widget key tuple."""
+        ConfigManager.set_config_value(value, *widget_key)
+
+    def _get_widget_value(self, widget, value_type):
+        """Get the typed value from a widget."""
+        if isinstance(widget, QCheckBox):
+            return widget.isChecked()
+        elif isinstance(widget, QComboBox):
+            return widget.currentText() or None
+        elif isinstance(widget, QTextEdit):
+            text = widget.toPlainText()
+            return text or None
+        elif isinstance(widget, QLineEdit):
+            text = widget.text()
+            if value_type == 'int':
+                return int(text) if text else None
+            elif value_type == 'float':
+                return float(text) if text else None
+            return text or None
+        elif isinstance(widget, QWidget) and hasattr(widget, '_value_widget'):
+            # model_path container
+            return widget._value_widget.text() or None
+        return None
+
+    def _set_widget_value(self, widget, value, value_type):
+        """Set a widget's displayed value."""
+        if isinstance(widget, QCheckBox):
+            widget.setChecked(bool(value))
+        elif isinstance(widget, QComboBox):
+            widget.setCurrentText(str(value) if value else '')
+        elif isinstance(widget, QTextEdit):
+            widget.setPlainText(str(value) if value else '')
+        elif isinstance(widget, QLineEdit):
+            # For API key fields, try env first
+            widget.setText(str(value) if value is not None else '')
+        elif isinstance(widget, QWidget) and hasattr(widget, '_value_widget'):
+            widget._value_widget.setText(str(value) if value is not None else '')
+
+    def _browse_model_path(self, line_edit):
+        """Open a file dialog to select a model path."""
         file_path = QFileDialog.getExistingDirectory(self, "Select Whisper Model Directory")
         if not file_path:
             file_path, _ = QFileDialog.getOpenFileName(
@@ -171,123 +557,14 @@ class SettingsWindow(BaseWindow):
                 "Model Files (*.bin *.pt);;CTranslate2 Model (model.bin);;All Files (*)"
             )
         if file_path:
-            widget.setText(file_path)
+            line_edit.setText(file_path)
 
-    def show_description(self, description):
-        """Show a description dialog."""
-        QMessageBox.information(self, 'Description', description)
-
-    def save_settings(self):
-        """Save the settings to the config file and .env file."""
-        self.iterate_settings(self.save_setting)
-
-        # Save the API key to the .env file
-        api_key = ConfigManager.get_config_value('model_options', 'api', 'api_key') or ''
-        set_key('.env', 'OPENAI_API_KEY', api_key)
-        os.environ['OPENAI_API_KEY'] = api_key
-
-        # Remove the API key from the config
-        ConfigManager.set_config_value(None, 'model_options', 'api', 'api_key')
-
-        ConfigManager.save_config()
-        QMessageBox.information(self, 'Settings Saved', 'Settings have been saved. The application will now restart.')
-        self.settings_saved.emit()
-        self.close()
-
-    def save_setting(self, widget, category, sub_category, key, meta):
-        value = self.get_widget_value_typed(widget, meta.get('type'))
-        if sub_category:
-            ConfigManager.set_config_value(value, category, sub_category, key)
-        else:
-            ConfigManager.set_config_value(value, category, key)
-
-    def reset_settings(self):
-        """Reset the settings to the saved values."""
-        ConfigManager.reload_config()
-        self.update_widgets_from_config()
-
-    def update_widgets_from_config(self):
-        """Update all widgets with values from the current configuration."""
-        self.iterate_settings(self.update_widget_value)
-
-    def update_widget_value(self, widget, category, sub_category, key, meta):
-        """Update a single widget with the value from the configuration."""
-        if sub_category:
-            config_value = ConfigManager.get_config_value(category, sub_category, key)
-        else:
-            config_value = ConfigManager.get_config_value(category, key)
-
-        self.set_widget_value(widget, config_value, meta.get('type'))
-
-    def set_widget_value(self, widget, value, value_type):
-        """Set the value of the widget."""
-        if isinstance(widget, QCheckBox):
-            widget.setChecked(value)
-        elif isinstance(widget, QComboBox):
-            widget.setCurrentText(value)
-        elif isinstance(widget, QLineEdit):
-            widget.setText(str(value) if value is not None else '')
-        elif isinstance(widget, QWidget) and widget.layout():
-            # This is for the model_path widget
-            line_edit = widget.layout().itemAt(0).widget()
-            if isinstance(line_edit, QLineEdit):
-                line_edit.setText(str(value) if value is not None else '')
-
-    def get_widget_value_typed(self, widget, value_type):
-        """Get the value of the widget with proper typing."""
-        if isinstance(widget, QCheckBox):
-            return widget.isChecked()
-        elif isinstance(widget, QComboBox):
-            return widget.currentText() or None
-        elif isinstance(widget, QLineEdit):
-            text = widget.text()
-            if value_type == 'int':
-                return int(text) if text else None
-            elif value_type == 'float':
-                return float(text) if text else None
-            else:
-                return text or None
-        elif isinstance(widget, QWidget) and widget.layout():
-            # This is for the model_path widget
-            line_edit = widget.layout().itemAt(0).widget()
-            if isinstance(line_edit, QLineEdit):
-                return line_edit.text() or None
-        return None
-
-    def toggle_api_local_options(self, use_api):
-        """Toggle visibility of API and local options."""
-        self.iterate_settings(lambda w, c, s, k, m: self.toggle_widget_visibility(w, c, s, k, use_api))
-
-    def toggle_widget_visibility(self, widget, category, sub_category, key, use_api):
-        if sub_category in ['api', 'local']:
-            widget.setVisible(use_api if sub_category == 'api' else not use_api)
-            
-            # Also toggle visibility of the corresponding label and help button
-            label = self.findChild(QLabel, f"{category}_{sub_category}_{key}_label")
-            help_button = self.findChild(QToolButton, f"{category}_{sub_category}_{key}_help")
-            
-            if label:
-                label.setVisible(use_api if sub_category == 'api' else not use_api)
-            if help_button:
-                help_button.setVisible(use_api if sub_category == 'api' else not use_api)
-
-
-    def iterate_settings(self, func):
-        """Iterate over all settings and apply a function to each."""
-        for category, settings in self.schema.items():
-            for sub_category, sub_settings in settings.items():
-                if isinstance(sub_settings, dict) and 'value' in sub_settings:
-                    widget = self.findChild(QWidget, f"{category}_{sub_category}_input")
-                    if widget:
-                        func(widget, category, None, sub_category, sub_settings)
-                else:
-                    for key, meta in sub_settings.items():
-                        widget = self.findChild(QWidget, f"{category}_{sub_category}_{key}_input")
-                        if widget:
-                            func(widget, category, sub_category, key, meta)
+    # ===================================================================
+    # Close event
+    # ===================================================================
 
     def closeEvent(self, event):
-        """Confirm before closing the settings window without saving."""
+        """Confirm before closing without saving."""
         reply = QMessageBox.question(
             self,
             'Close without saving?',
@@ -295,10 +572,8 @@ class SettingsWindow(BaseWindow):
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
-
         if reply == QMessageBox.Yes:
-            ConfigManager.reload_config()  # Revert to last saved configuration
-            self.update_widgets_from_config()
+            ConfigManager.reload_config()
             self.settings_closed.emit()
             super().closeEvent(event)
         else:

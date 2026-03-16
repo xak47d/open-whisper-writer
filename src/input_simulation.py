@@ -3,6 +3,7 @@ import os
 import signal
 import time
 from pynput.keyboard import Controller as PynputController
+from PyQt5.QtWidgets import QApplication
 
 from utils import ConfigManager
 
@@ -22,6 +23,7 @@ def run_command_or_exit_on_failure(command):
 class InputSimulator:
     """
     A class to simulate keyboard input using various methods.
+    Supports typing, clipboard copy, or both depending on output_mode config.
     """
 
     def __init__(self):
@@ -109,6 +111,39 @@ class InputSimulator:
         self.dotool_process.stdin.write(f"typedelay {interval * 1000}\n")
         self.dotool_process.stdin.write(f"type {text}\n")
         self.dotool_process.stdin.flush()
+
+    def clipboard_copy(self, text):
+        """
+        Copy text to the system clipboard.
+
+        Args:
+            text (str): The text to copy.
+        """
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(text)
+            ConfigManager.console_print(f'Copied to clipboard: {text[:60]}...' if len(text) > 60 else f'Copied to clipboard: {text}')
+        else:
+            ConfigManager.console_print('Warning: Could not access clipboard.')
+
+    def output(self, text):
+        """
+        Output text according to the configured output_mode.
+
+        Modes:
+            - type: simulate keyboard typing
+            - clipboard: copy to clipboard only
+            - type_and_clipboard: do both
+
+        Args:
+            text (str): The text to output.
+        """
+        output_mode = ConfigManager.get_config_value('post_processing', 'output_mode') or 'type'
+
+        if output_mode in ('type', 'type_and_clipboard'):
+            self.typewrite(text)
+        if output_mode in ('clipboard', 'type_and_clipboard'):
+            self.clipboard_copy(text)
 
     def cleanup(self):
         """
