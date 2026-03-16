@@ -59,7 +59,7 @@ a = Analysis(
         ('src/config_schema.yaml', 'src'),
     ] + faster_whisper_data + ctranslate2_data,
     hiddenimports=hidden_imports,
-    hookspath=[],
+    hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[

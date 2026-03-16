@@ -37,7 +37,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/PortAudio/portaudio/archive/refs/tags/v19.7.0.tar.gz
-        sha256: 5af29f15524e5765a60dafdad907701a5c42e41e0438d0693e2a26c88f3bd46c
+        sha256: 5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0
 
   # libsndfile for audio I/O
   - name: libsndfile
@@ -53,6 +53,8 @@ modules:
   - name: whisper-writer
     buildsystem: simple
     build-options:
+      build-args:
+        - --share=network
       env:
         PIP_DISABLE_PIP_VERSION_CHECK: '1'
         PIP_NO_CACHE_DIR: '1'
