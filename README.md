@@ -1,107 +1,129 @@
 # <img src="./assets/ww-logo.png" alt="WhisperWriter icon" width="25" height="25"> WhisperWriter
 
 ![version](https://img.shields.io/badge/version-1.1.0-blue)
+![python](https://img.shields.io/badge/python-3.10%2B-blue)
+![license](https://img.shields.io/badge/license-GPL--3.0-green)
+![platform](https://img.shields.io/badge/platform-Linux-lightgrey)
 
 <p align="center">
     <img src="./assets/ww-demo-image-02.gif" alt="WhisperWriter demo gif" width="340" height="136">
 </p>
 
-**Update (2024-05-28):** I've just merged in a major rewrite of WhisperWriter! We've migrated from using `tkinter` to using `PyQt5` for the UI, added a new settings window for configuration, a new continuous recording mode, support for a local API, and more! Please be patient as I work out any bugs that may have been introduced in the process. If you encounter any problems, please [open a new issue](https://github.com/savbell/whisper-writer/issues)!
+WhisperWriter is a speech-to-text desktop application that uses [OpenAI's Whisper model](https://openai.com/research/whisper) to auto-transcribe recordings from your microphone and type them into the active window.
 
-WhisperWriter is a small speech-to-text app that uses [OpenAI's Whisper model](https://openai.com/research/whisper) to auto-transcribe recordings from a user's microphone to the active window.
+> This is a maintained fork of [savbell/whisper-writer](https://github.com/savbell/whisper-writer) with updated dependencies, new model support, Linux packaging, and CI/CD.
 
-Once started, the script runs in the background and waits for a keyboard shortcut to be pressed (`ctrl+shift+space` by default). When the shortcut is pressed, the app starts recording from your microphone. There are four recording modes to choose from:
-- `continuous` (default): Recording will stop after a long enough pause in your speech. The app will transcribe the text and then start recording again. To stop listening, press the keyboard shortcut again.
-- `voice_activity_detection`: Recording will stop after a long enough pause in your speech. Recording will not start until the keyboard shortcut is pressed again.
-- `press_to_toggle` Recording will stop when the keyboard shortcut is pressed again. Recording will not start until the keyboard shortcut is pressed again.
-- `hold_to_record` Recording will continue until the keyboard shortcut is released. Recording will not start until the keyboard shortcut is held down again.
+## What's New in v1.1.0
 
-You can change the keyboard shortcut (`activation_key`) and recording mode in the [Configuration Options](#configuration-options). While recording and transcribing, a small status window is displayed that shows the current stage of the process (but this can be turned off). Once the transcription is complete, the transcribed text will be automatically written to the active window.
+- **New models**: `large-v3-turbo`, `turbo`, and five `distil-*` variants for faster inference
+- **New compute types**: `bfloat16`, `int8_float16`, `int8_bfloat16`
+- **Modern packaging**: PyInstaller binary, `.deb`, Arch Linux PKGBUILD, Flatpak
+- **CI/CD**: GitHub Actions workflows for automated builds and releases
+- **Dependency refresh**: All packages updated; `requirements.txt` replaced with `pyproject.toml`
+- **Python 3.10-3.14** supported
 
-The transcription can either be done locally through the [faster-whisper Python package](https://github.com/SYSTRAN/faster-whisper/) or through a request to [OpenAI's API](https://platform.openai.com/docs/guides/speech-to-text). By default, the app will use a local model, but you can change this in the [Configuration Options](#configuration-options). If you choose to use the API, you will need to either provide your OpenAI API key or change the base URL endpoint.
+## How It Works
 
-**Fun fact:** Almost the entirety of the initial release of the project was pair-programmed with [ChatGPT-4](https://openai.com/product/gpt-4) and [GitHub Copilot](https://github.com/features/copilot) using VS Code. Practically every line, including most of this README, was written by AI. After the initial prototype was finished, WhisperWriter was used to write a lot of the prompts as well!
+Once started, WhisperWriter runs in the background and waits for a keyboard shortcut (`ctrl+shift+space` by default). When the shortcut is pressed, the app starts recording from your microphone. There are four recording modes:
+
+- **continuous** (default): Transcribes after a pause in speech, then automatically starts recording again. Press the shortcut again to stop.
+- **voice_activity_detection**: Transcribes after a pause in speech. Press the shortcut to start a new recording.
+- **press_to_toggle**: Records until the shortcut is pressed again.
+- **hold_to_record**: Records while the shortcut is held down.
+
+Transcription can run **locally** via [faster-whisper](https://github.com/SYSTRAN/faster-whisper/) or through the [OpenAI API](https://platform.openai.com/docs/guides/speech-to-text). Local mode is the default.
+
+## Available Models
+
+| Model | Parameters | English-only | Speed | Notes |
+|-------|-----------|:------------:|-------|-------|
+| `tiny` / `tiny.en` | 39M | .en variant | Fastest | Good for quick drafts |
+| `base` / `base.en` | 74M | .en variant | Fast | Default; good balance |
+| `small` / `small.en` | 244M | .en variant | Moderate | |
+| `medium` / `medium.en` | 769M | .en variant | Slow | |
+| `large-v1` | 1550M | No | Slowest | Original large model |
+| `large-v2` | 1550M | No | Slowest | Improved large |
+| `large-v3` | 1550M | No | Slowest | Best accuracy |
+| `large-v3-turbo` / `turbo` | 809M | No | Fast | Near large-v3 quality, much faster |
+| `distil-small.en` | - | Yes | Fast | Distilled small |
+| `distil-medium.en` | - | Yes | Fast | Distilled medium |
+| `distil-large-v2` | - | No | Fast | Distilled large-v2 |
+| `distil-large-v3` | - | No | Fast | Distilled large-v3 |
+| `distil-large-v3.5` | - | No | Fast | Latest distilled model |
 
 ## Getting Started
 
 ### Prerequisites
-Before you can run this app, you'll need to have the following software installed:
 
-- Git: [https://git-scm.com/downloads](https://git-scm.com/downloads)
-- Python `3.10+`: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+- **Python 3.10+**: [python.org/downloads](https://www.python.org/downloads/)
+- **Git**: [git-scm.com/downloads](https://git-scm.com/downloads)
+- **Linux system packages** (Debian/Ubuntu):
+  ```bash
+  sudo apt install portaudio19-dev libsndfile1 libxcb-xinerama0 libxkbcommon0
+  ```
+- **Linux system packages** (Arch/CachyOS):
+  ```bash
+  sudo pacman -S portaudio libsndfile libxkbcommon
+  ```
 
-If you want to run `faster-whisper` on your GPU, you'll also need to install the following NVIDIA libraries:
+For audio notification support (`noise_on_completion`), you also need GStreamer and PyGObject:
+```bash
+# Debian/Ubuntu
+sudo apt install python3-gi gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
-- [cuBLAS for CUDA 12](https://developer.nvidia.com/cublas)
-- [cuDNN 8 for CUDA 12](https://developer.nvidia.com/cudnn)
+# Arch
+sudo pacman -S python-gobject gstreamer gst-plugins-base gst-plugins-good
+```
 
 <details>
-<summary>More information on GPU execution</summary>
+<summary>GPU acceleration (NVIDIA CUDA)</summary>
 
-The below was taken directly from the [`faster-whisper` README](https://github.com/SYSTRAN/faster-whisper?tab=readme-ov-file#gpu):
+To run faster-whisper on your GPU, install the NVIDIA CUDA libraries:
 
-**Note:** The latest versions of `ctranslate2` support CUDA 12 only. For CUDA 11, the current workaround is downgrading to the `3.24.0` version of `ctranslate2` (This can be done with `pip install --force-reinsall ctranslate2==3.24.0`).
+- [cuBLAS for CUDA 12](https://developer.nvidia.com/cublas)
+- [cuDNN for CUDA 12](https://developer.nvidia.com/cudnn)
 
-There are multiple ways to install the NVIDIA libraries mentioned above. The recommended way is described in the official NVIDIA documentation, but we also suggest other installation methods below.
-
-#### Use Docker
-
-The libraries (cuBLAS, cuDNN) are installed in these official NVIDIA CUDA Docker images: `nvidia/cuda:12.0.0-runtime-ubuntu20.04` or `nvidia/cuda:12.0.0-runtime-ubuntu22.04`.
-
-#### Install with `pip` (Linux only)
-
-On Linux these libraries can be installed with `pip`. Note that `LD_LIBRARY_PATH` must be set before launching Python.
+#### Install with pip (Linux)
 
 ```bash
 pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 
-export LD_LIBRARY_PATH=`python3 -c 'import os; import nvidia.cublas.lib; import nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))'`
+export LD_LIBRARY_PATH=$(python3 -c 'import os; import nvidia.cublas.lib; import nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))')
 ```
 
-**Note**: Version 9+ of `nvidia-cudnn-cu12` appears to cause issues due its reliance on cuDNN 9 (Faster-Whisper does not currently support cuDNN 9). Ensure your version of the Python package is for cuDNN 8.
+#### Download from Purfview's repository (Windows & Linux)
 
-#### Download the libraries from Purfview's repository (Windows & Linux)
+[whisper-standalone-win](https://github.com/Purfview/whisper-standalone-win) provides the required NVIDIA libraries in a [single archive](https://github.com/Purfview/whisper-standalone-win/releases/tag/libs). Extract and place the libraries in a directory on your `PATH`.
 
-Purfview's [whisper-standalone-win](https://github.com/Purfview/whisper-standalone-win) provides the required NVIDIA libraries for Windows & Linux in a [single archive](https://github.com/Purfview/whisper-standalone-win/releases/tag/libs). Decompress the archive and place the libraries in a directory included in the `PATH`.
+#### Docker
+
+The libraries are pre-installed in official NVIDIA CUDA Docker images such as `nvidia/cuda:12.0.0-runtime-ubuntu22.04`.
 
 </details>
 
 ### Installation
 
-WhisperWriter can be installed as a pre-built binary, a Linux package, or from source.
+#### Option A: Pre-built Binary
 
-#### Option A: Pre-built Binary (Recommended)
-
-Download the latest release from the [Releases page](https://github.com/xak47d/open-whisper-writer/releases):
+Download from the [Releases page](https://github.com/xak47d/open-whisper-writer/releases):
 
 ```bash
-# Download and extract
 tar xzf whisper-writer-linux-x86_64.tar.gz
 cd whisper-writer
-
-# Run
 ./whisper-writer
 ```
 
 #### Option B: Debian/Ubuntu (.deb)
 
 ```bash
-# Download the .deb from the Releases page, then:
-sudo apt install ./whisper-writer_*.deb
-
-# Launch from your application menu, or:
+sudo apt install ./whisper-writer_1.1.0_amd64.deb
 whisper-writer
 ```
 
-#### Option C: Arch Linux (AUR)
-
-Using the PKGBUILD from this repository:
+#### Option C: Arch Linux
 
 ```bash
-# With an AUR helper:
-yay -S whisper-writer
-
-# Or manually:
+# From the PKGBUILD in this repo:
 cd packaging/arch
 makepkg -si
 ```
@@ -109,147 +131,184 @@ makepkg -si
 #### Option D: Flatpak
 
 ```bash
-# Download the .flatpak bundle from Releases, then:
 flatpak install whisper-writer.flatpak
-
-# Launch:
 flatpak run io.github.xak47d.whisper-writer
 ```
 
 #### Option E: From Source
 
-##### 1. Clone the repository:
-
-```
+```bash
 git clone https://github.com/xak47d/open-whisper-writer
 cd open-whisper-writer
-```
 
-##### 2. Create a virtual environment and activate it:
-
-```
-python -m venv venv
+python -m venv venv --system-site-packages
 source venv/bin/activate
-```
 
-##### 3. Install the package:
-
-```
 pip install -e .
-```
-
-Or for development (includes PyInstaller, pytest, ruff):
-```
-pip install -e ".[dev]"
-```
-
-##### 4. Run:
-
-```
 python run.py
 ```
 
-##### 5. Configure and start WhisperWriter:
-On first run, a Settings window should appear. Once configured and saved, another window will open. Press "Start" to activate the keyboard listener. Press the activation key (`ctrl+shift+space` by default) to start recording and transcribing to the active window.
+> **Note**: `--system-site-packages` is needed so the venv can access system-installed PyGObject (`gi`) for audio notification playback. If you don't use the `noise_on_completion` feature, a regular venv works fine.
 
-### Building from Source
+For development (includes PyInstaller, pytest, ruff):
+```bash
+pip install -e ".[dev]"
+```
 
-To build a standalone binary and Linux packages:
+### First Run
+
+On first launch, a Settings window will appear. Configure your preferences and click Save. The main window will open -- press **Start** to activate the keyboard listener. Press your activation key (`ctrl+shift+space` by default) to begin recording.
+
+## Building from Source
 
 ```bash
 # Install dev dependencies
 pip install -e ".[dev]"
 
-# Build PyInstaller binary
+# Build standalone binary (PyInstaller)
 ./scripts/build.sh
 
-# Build .deb package (requires the PyInstaller build)
+# Build .deb package (requires PyInstaller build first)
 ./scripts/build-deb.sh
+
+# Build Arch package
+cd packaging/arch && makepkg -s
 ```
 
-### Configuration Options
+## Configuration Options
 
-WhisperWriter uses a configuration file to customize its behaviour. To set up the configuration, open the Settings window:
+WhisperWriter uses a YAML configuration file. Open the Settings window to configure:
 
 <p align="center">
     <img src="./assets/ww-settings-demo.gif" alt="WhisperWriter Settings window demo gif" width="350" height="350">
 </p>
 
-#### Model Options
-- `use_api`: Toggle to choose whether to use the OpenAI API or a local Whisper model for transcription. (Default: `false`)
-- `common`: Options common to both API and local models.
-  - `language`: The language code for the transcription in [ISO-639-1 format](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes). (Default: `null`)
-  - `temperature`: Controls the randomness of the transcription output. Lower values make the output more focused and deterministic. (Default: `0.0`)
-  - `initial_prompt`: A string used as an initial prompt to condition the transcription. More info: [OpenAI Prompting Guide](https://platform.openai.com/docs/guides/speech-to-text/prompting). (Default: `null`)
+### Model Options
 
-- `api`: Configuration options for the OpenAI API. See the [OpenAI API documentation](https://platform.openai.com/docs/api-reference/audio/create?lang=python) for more information.
-  - `model`: The model to use for transcription. Currently, only `whisper-1` is available. (Default: `whisper-1`)
-  - `base_url`: The base URL for the API. Can be changed to use a local API endpoint, such as [LocalAI](https://localai.io/). (Default: `https://api.openai.com/v1`)
-  - `api_key`: Your API key for the OpenAI API. Required for non-local API usage. (Default: `null`)
+| Option | Default | Description |
+|--------|---------|-------------|
+| `use_api` | `false` | Use OpenAI API instead of local model |
 
-- `local`: Configuration options for the local Whisper model.
-  - `model`: The model to use for transcription. Larger models are more accurate but slower. `turbo`/`large-v3-turbo` offer near large-v3 quality at much higher speed. `distil-*` variants are fast distilled models. See [available models and languages](https://github.com/openai/whisper?tab=readme-ov-file#available-models-and-languages). (Default: `base`)
-  - `device`: The device to run the local Whisper model on. Use `cuda` for NVIDIA GPUs, `cpu` for CPU-only processing, or `auto` to let the system automatically choose the best available device. (Default: `auto`)
-  - `compute_type`: The compute type to use for the local Whisper model. Options: `default`, `float32`, `float16`, `bfloat16`, `int8`, `int8_float16`, `int8_bfloat16`. [More information on quantization here](https://opennmt.net/CTranslate2/quantization.html). (Default: `default`)
-  - `condition_on_previous_text`: Set to `true` to use the previously transcribed text as a prompt for the next transcription request. (Default: `true`)
-  - `vad_filter`: Set to `true` to use [a voice activity detection (VAD) filter](https://github.com/snakers4/silero-vad) (Silero VAD V6) to remove silence from the recording. (Default: `false`)
-  - `model_path`: The path to a local Whisper model directory or file. If not specified, the model will be downloaded automatically from Hugging Face. (Default: `null`)
+**Common** (API and local):
 
-#### Recording Options
-- `activation_key`: The keyboard shortcut to activate the recording and transcribing process. Separate keys with a `+`. (Default: `ctrl+shift+space`)
-- `input_backend`: The input backend to use for detecting key presses. `auto` will try to use the best available backend. (Default: `auto`)
-- `recording_mode`: The recording mode to use. Options include `continuous` (auto-restart recording after pause in speech until activation key is pressed again), `voice_activity_detection` (stop recording after pause in speech), `press_to_toggle` (stop recording when activation key is pressed again), `hold_to_record` (stop recording when activation key is released). (Default: `continuous`)
-- `sound_device`: The numeric index of the sound device to use for recording. To find device numbers, run `python -m sounddevice`. (Default: `null`)
-- `sample_rate`: The sample rate in Hz to use for recording. (Default: `16000`)
-- `silence_duration`: The duration in milliseconds to wait for silence before stopping the recording. (Default: `900`)
-- `min_duration`: The minimum duration in milliseconds for a recording to be processed. Recordings shorter than this will be discarded. (Default: `100`)
+| Option | Default | Description |
+|--------|---------|-------------|
+| `language` | `null` | Language code ([ISO-639-1](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes)) |
+| `temperature` | `0.0` | Transcription randomness (lower = more deterministic) |
+| `initial_prompt` | `null` | Prompt to condition the transcription ([guide](https://platform.openai.com/docs/guides/speech-to-text/prompting)) |
 
-#### Post-processing Options
-- `writing_key_press_delay`: The delay in seconds between each key press when writing the transcribed text. (Default: `0.005`)
-- `remove_trailing_period`: Set to `true` to remove the trailing period from the transcribed text. (Default: `false`)
-- `add_trailing_space`: Set to `true` to add a space to the end of the transcribed text. (Default: `true`)
-- `remove_capitalization`: Set to `true` to convert the transcribed text to lowercase. (Default: `false`)
-- `input_method`: The method to use for simulating keyboard input. (Default: `pynput`)
+**API** ([docs](https://platform.openai.com/docs/api-reference/audio/create?lang=python)):
 
-#### Miscellaneous Options
-- `print_to_terminal`: Set to `true` to print the script status and transcribed text to the terminal. (Default: `true`)
-- `hide_status_window`: Set to `true` to hide the status window during operation. (Default: `false`)
-- `noise_on_completion`: Set to `true` to play a noise after the transcription has been typed out. (Default: `false`)
+| Option | Default | Description |
+|--------|---------|-------------|
+| `model` | `whisper-1` | API model name |
+| `base_url` | `https://api.openai.com/v1` | API endpoint (change for [LocalAI](https://localai.io/), etc.) |
+| `api_key` | `null` | OpenAI API key (stored in `.env`, not config) |
 
-If any of the configuration options are invalid or not provided, the program will use the default values.
+**Local**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `model` | `base` | Model name (see [Available Models](#available-models)) |
+| `device` | `auto` | `auto`, `cpu`, or `cuda` |
+| `compute_type` | `default` | `default`, `float32`, `float16`, `bfloat16`, `int8`, `int8_float16`, `int8_bfloat16` ([quantization docs](https://opennmt.net/CTranslate2/quantization.html)) |
+| `condition_on_previous_text` | `true` | Use previous transcription as prompt context |
+| `vad_filter` | `false` | Enable Silero VAD to filter silence |
+| `model_path` | `null` | Path to a local model directory/file (auto-downloads from HuggingFace if unset) |
+
+### Recording Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `activation_key` | `ctrl+shift+space` | Keyboard shortcut (separate keys with `+`) |
+| `input_backend` | `auto` | Input backend: `auto`, `evdev`, `pynput` |
+| `recording_mode` | `continuous` | `continuous`, `voice_activity_detection`, `press_to_toggle`, `hold_to_record` |
+| `sound_device` | `null` | Sound device index (run `python -m sounddevice` to list) |
+| `sample_rate` | `16000` | Sample rate in Hz |
+| `silence_duration` | `900` | Silence threshold in ms before stopping |
+| `min_duration` | `100` | Minimum recording length in ms (shorter is discarded) |
+
+### Post-processing Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `writing_key_press_delay` | `0.005` | Delay in seconds between simulated key presses |
+| `remove_trailing_period` | `false` | Remove trailing period from transcription |
+| `add_trailing_space` | `true` | Add a space after transcription |
+| `remove_capitalization` | `false` | Convert transcription to lowercase |
+| `input_method` | `pynput` | Typing method: `pynput`, `ydotool`, `dotool` |
+
+### Miscellaneous Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `print_to_terminal` | `true` | Print status and transcription to terminal |
+| `hide_status_window` | `false` | Hide the recording/transcribing status overlay |
+| `noise_on_completion` | `false` | Play a sound when transcription finishes |
+
+## Project Structure
+
+```
+open-whisper-writer/
+├── run.py                  # Entry point
+├── pyproject.toml          # Package metadata and dependencies
+├── src/
+│   ├── main.py             # WhisperWriterApp (QApplication)
+│   ├── transcription.py    # Local and API transcription
+│   ├── result_thread.py    # Recording + transcription thread
+│   ├── key_listener.py     # Keyboard input (evdev/pynput backends)
+│   ├── input_simulation.py # Typing simulation (pynput/ydotool/dotool)
+│   ├── utils.py            # ConfigManager (YAML-based)
+│   ├── config_schema.yaml  # Configuration schema with defaults
+│   └── ui/
+│       ├── base_window.py      # Frameless window base class
+│       ├── main_window.py      # Start/Settings window
+│       ├── settings_window.py  # Tabbed settings editor
+│       └── status_window.py    # Recording/transcribing overlay
+├── assets/                 # Icons, sounds, demo images
+├── scripts/
+│   ├── build.sh            # PyInstaller build
+│   └── build-deb.sh        # .deb package build
+├── packaging/
+│   ├── arch/PKGBUILD
+│   └── flatpak/
+├── .github/workflows/
+│   ├── build.yml           # CI: build on push/PR
+│   └── release.yml         # CD: release on tag
+├── whisper-writer.desktop  # FreeDesktop entry
+└── whisper-writer.spec     # PyInstaller spec
+```
 
 ## Known Issues
 
-You can see all reported issues and their current status in our [Issue Tracker](https://github.com/savbell/whisper-writer/issues). If you encounter a problem, please [open a new issue](https://github.com/savbell/whisper-writer/issues/new) with a detailed description and reproduction steps, if possible.
+See the [Issue Tracker](https://github.com/xak47d/open-whisper-writer/issues). If you encounter a problem, please [open a new issue](https://github.com/xak47d/open-whisper-writer/issues/new).
 
 ## Roadmap
-Below are features I am planning to add in the near future:
-- [x] Restructuring configuration options to reduce redundancy
-- [x] Update to use the latest version of the OpenAI API
-- [ ] Additional post-processing options:
-  - [ ] Simple word replacement (e.g. "gonna" -> "going to" or "smiley face" -> "😊")
-  - [ ] Using GPT for instructional post-processing
-- [x] Updating GUI
-- [x] Creating standalone executable file
+
+- [x] Restructured configuration options
+- [x] Updated OpenAI API usage
+- [x] PyQt5 GUI
+- [x] Standalone binary packaging
 - [x] Linux packaging (.deb, PKGBUILD, Flatpak)
 - [x] Updated model support (large-v3-turbo, distil variants)
 - [x] CI/CD with GitHub Actions
+- [ ] Post-processing: simple word replacement (e.g. "gonna" -> "going to")
+- [ ] Post-processing: GPT-based instructional post-processing
+- [ ] Audio file pipelining
 
-Below are features not currently planned:
-- [ ] Pipelining audio files
-
-Implemented features can be found in the [CHANGELOG](CHANGELOG.md).
+See the [CHANGELOG](CHANGELOG.md) for version history.
 
 ## Contributing
 
-Contributions are welcome! I created this project for my own personal use and didn't expect it to get much attention, so I haven't put much effort into testing or making it easy for others to contribute. If you have ideas or suggestions, feel free to [open a pull request](https://github.com/savbell/whisper-writer/pulls) or [create a new issue](https://github.com/savbell/whisper-writer/issues/new). I'll do my best to review and respond as time allows.
+Contributions are welcome. Feel free to [open a pull request](https://github.com/xak47d/open-whisper-writer/pulls) or [create an issue](https://github.com/xak47d/open-whisper-writer/issues/new).
 
 ## Credits
 
-- [OpenAI](https://openai.com/) for creating the Whisper model and providing the API. Plus [ChatGPT](https://chat.openai.com/), which was used to write a lot of the initial code for this project.
-- [Guillaume Klein](https://github.com/guillaumekln) for creating the [faster-whisper Python package](https://github.com/SYSTRAN/faster-whisper).
-- All of our [contributors](https://github.com/savbell/whisper-writer/graphs/contributors)!
+- [savbell](https://github.com/savbell) for creating the original [whisper-writer](https://github.com/savbell/whisper-writer) project
+- [OpenAI](https://openai.com/) for the Whisper model and API
+- [Guillaume Klein](https://github.com/guillaumekln) and the [faster-whisper](https://github.com/SYSTRAN/faster-whisper) team
+- All [contributors](https://github.com/xak47d/open-whisper-writer/graphs/contributors)
 
 ## License
 
-This project is licensed under the GNU General Public License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for details.
