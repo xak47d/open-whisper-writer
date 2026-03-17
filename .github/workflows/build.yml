@@ -97,6 +97,7 @@ jobs:
 
       - name: Create Flatpak bundle
         run: |
+          mkdir -p dist
           flatpak build-bundle \
             flatpak-repo \
             dist/whisper-writer.flatpak \
