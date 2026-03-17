@@ -14,10 +14,8 @@ finish-args:
   - --share=ipc
   # Network access (for model downloads and OpenAI API)
   - --share=network
-  # GPU access (for CUDA inference)
+  # GPU access (for CUDA inference) and input devices (for key listener / evdev)
   - --device=all
-  # Access to input devices (for key listener / evdev)
-  - --device=input
   # Filesystem access for user config
   - --filesystem=xdg-config/whisper-writer:create
   # Needed for keyboard input simulation
