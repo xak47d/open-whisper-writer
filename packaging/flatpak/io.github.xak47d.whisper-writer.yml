@@ -95,8 +95,8 @@ modules:
       - desktop-file-edit --set-key=Exec --set-value=whisper-writer /app/share/applications/io.github.xak47d.whisper-writer.desktop
       - desktop-file-edit --set-key=Icon --set-value=io.github.xak47d.whisper-writer /app/share/applications/io.github.xak47d.whisper-writer.desktop
       # Install icon (resize to 256x256 for Flatpak export validation)
-      - PYTHONPATH=/app/lib/python3.12/site-packages python3 -c "from PIL import Image; img=Image.open('assets/ww-logo.png'); img=img.resize((256,256), Image.LANCZOS); img.save('/tmp/icon-256.png')"
-      - install -Dm644 /tmp/icon-256.png /app/share/icons/hicolor/256x256/apps/io.github.xak47d.whisper-writer.png
+      - PYTHONPATH=/app/lib/python3.12/site-packages python3 -c "from PIL import Image; img=Image.open('assets/ww-logo.png'); img=img.resize((256,256), Image.LANCZOS); img.save('icon-256.png')"
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/io.github.xak47d.whisper-writer.png
       # Install AppStream metadata
       - install -Dm644 io.github.xak47d.whisper-writer.metainfo.xml /app/share/metainfo/io.github.xak47d.whisper-writer.metainfo.xml
     sources:
