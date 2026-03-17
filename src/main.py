@@ -32,7 +32,18 @@ class WhisperWriterApp(QObject):
         """
         super().__init__()
         self.app = QApplication(sys.argv)
-        self.app.setWindowIcon(QIcon(os.path.join('assets', 'ww-logo.png')))
+        self.app.setApplicationName('WhisperWriter')
+        # Set desktop filename so KDE Wayland can associate the tray icon with
+        # the .desktop file and look up the icon from the hicolor theme.
+        self.app.setDesktopFileName('whisper-writer')
+        # Prefer theme icon (installed to ~/.local/share/icons/hicolor/) for
+        # reliable StatusNotifierItem rendering on KDE Wayland; fall back to
+        # the bundled asset if the theme icon isn't installed.
+        _fallback_icon = QIcon(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'assets', 'ww-logo.png'))
+        _app_icon = QIcon.fromTheme('whisper-writer', _fallback_icon)
+        self.app.setWindowIcon(_app_icon)
 
         ConfigManager.initialize()
 
@@ -79,12 +90,16 @@ class WhisperWriterApp(QObject):
         Create the system tray icon and its context menu with state indicators
         and quick toggles.
         """
-        self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo.png')), self.app)
+        _fallback_icon = QIcon(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'assets', 'ww-logo.png'))
+        _tray_icon_q = QIcon.fromTheme('whisper-writer', _fallback_icon)
+        self.tray_icon = QSystemTrayIcon(_tray_icon_q, self)
 
         tray_menu = QMenu()
 
         # --- Status header ---
-        self._tray_status_action = QAction('Status: Idle', self.app)
+        self._tray_status_action = QAction('Status: Idle', tray_menu)
         self._tray_status_action.setEnabled(False)
         tray_menu.addAction(self._tray_status_action)
 
@@ -92,7 +107,7 @@ class WhisperWriterApp(QObject):
 
         # --- Provider info ---
         provider_label = self._get_provider_label()
-        self._tray_provider_action = QAction(provider_label, self.app)
+        self._tray_provider_action = QAction(provider_label, tray_menu)
         self._tray_provider_action.setEnabled(False)
         tray_menu.addAction(self._tray_provider_action)
 
@@ -101,10 +116,10 @@ class WhisperWriterApp(QObject):
         # --- Quick toggles ---
         # Output mode toggle
         output_mode = ConfigManager.get_config_value('post_processing', 'output_mode') or 'type'
-        self._output_mode_menu = QMenu('Output Mode', self.app)
+        self._output_mode_menu = QMenu('Output Mode', tray_menu)
         self._output_mode_actions = {}
         for mode in ('type', 'clipboard', 'type_and_clipboard'):
-            action = QAction(mode.replace('_', ' ').title(), self.app)
+            action = QAction(mode.replace('_', ' ').title(), self._output_mode_menu)
             action.setCheckable(True)
             action.setChecked(mode == output_mode)
             action.triggered.connect(lambda checked, m=mode: self._set_output_mode(m))
@@ -114,7 +129,7 @@ class WhisperWriterApp(QObject):
 
         # LLM processing toggle
         llm_enabled = ConfigManager.get_config_value('llm_processing', 'enabled') or False
-        self._llm_toggle_action = QAction('LLM Processing', self.app)
+        self._llm_toggle_action = QAction('LLM Processing', tray_menu)
         self._llm_toggle_action.setCheckable(True)
         self._llm_toggle_action.setChecked(llm_enabled)
         self._llm_toggle_action.triggered.connect(self._toggle_llm_processing)
@@ -122,10 +137,10 @@ class WhisperWriterApp(QObject):
 
         # LLM mode submenu
         llm_mode = ConfigManager.get_config_value('llm_processing', 'mode') or 'clean_up'
-        self._llm_mode_menu = QMenu('LLM Mode', self.app)
+        self._llm_mode_menu = QMenu('LLM Mode', tray_menu)
         self._llm_mode_actions = {}
         for mode in ('clean_up', 'formal', 'translate', 'custom'):
-            action = QAction(mode.replace('_', ' ').title(), self.app)
+            action = QAction(mode.replace('_', ' ').title(), self._llm_mode_menu)
             action.setCheckable(True)
             action.setChecked(mode == llm_mode)
             action.triggered.connect(lambda checked, m=mode: self._set_llm_mode(m))
@@ -136,15 +151,15 @@ class WhisperWriterApp(QObject):
         tray_menu.addSeparator()
 
         # --- Standard actions ---
-        show_action = QAction('WhisperWriter Main Menu', self.app)
+        show_action = QAction('WhisperWriter Main Menu', tray_menu)
         show_action.triggered.connect(self.main_window.show)
         tray_menu.addAction(show_action)
 
-        settings_action = QAction('Open Settings', self.app)
+        settings_action = QAction('Open Settings', tray_menu)
         settings_action.triggered.connect(self.settings_window.show)
         tray_menu.addAction(settings_action)
 
-        exit_action = QAction('Exit', self.app)
+        exit_action = QAction('Exit', tray_menu)
         exit_action.triggered.connect(self.exit_app)
         tray_menu.addAction(exit_action)
 
